@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Conferme prenotazioni</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#1a2f4a" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=3" />
+  <style>
+    #view { padding-bottom: 40px; }
+    .ok-box { background: #e3efe4; color: #2f5a35; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
+    .warn-box { background: var(--terra-lt); color: #8a3a1c; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
+    pre.key { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-top: 8px; max-height: 160px; overflow: auto; }
+    textarea.out { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <main id="view">
+      <header class="top">
+        <div class="brand"><img src="icons/logo.png" alt="" /><div><div class="sub">Solo per Ciro</div><h1>Conferme</h1></div></div>
+      </header>
+
+      <section id="key-section"></section>
+
+      <section id="form-section" class="hidden">
+        <h2 class="sec">1. Dati della prenotazione</h2>
+        <div class="card">
+          <label class="f" style="margin-top:0">Incolla il messaggio WhatsApp del cliente (facoltativo)
+            <textarea id="paste" rows="4" placeholder="Hello Ciro, I would like to book a private tour. - Booking code: MC-…"></textarea></label>
+          <button class="btn ghost" id="parse" type="button" style="margin-top:10px">Compila dal messaggio</button>
+        </div>
+
+        <form class="card" id="cf" style="margin-top:12px">
+          <div class="f2">
+            <label class="f" style="margin-top:0">Codice prenotazione<input name="c" required /></label>
+            <label class="f" style="margin-top:0">Tipo<select name="k">
+              <option value="private">Tour privato</option><option value="shared">Tour condiviso</option><option value="transfer">Transfer</option>
+            </select></label>
+          </div>
+          <label class="f">Tour<select name="o" id="tour-sel"></select></label>
+          <label class="f">Titolo mostrato al cliente<input name="t" required /></label>
+          <div class="f2">
+            <label class="f">Data<input name="d" type="date" required /></label>
+            <label class="f">Ora<input name="h" type="time" /></label>
+          </div>
+          <div class="f2">
+            <label class="f">Persone<input name="p" type="number" min="1" max="60" value="2" required /></label>
+            <label class="f">Totale (€)<input name="e" type="number" min="0" step="1" /></label>
+          </div>
+          <label class="f">Punto di ritiro<input name="u" required /></label>
+          <div class="f2">
+            <label class="f">Nome cliente<input name="n" required /></label>
+            <label class="f">WhatsApp cliente<input name="phone" type="tel" placeholder="+1 555 123 4567" /></label>
+          </div>
+          <label class="f" style="display:flex;gap:10px;align-items:flex-start;font-weight:400">
+            <input type="checkbox" name="paid" required style="width:auto;margin-top:3px" />
+            <span>Ho ricevuto il pagamento / la prenotazione è confermata</span></label>
+          <button class="btn" style="margin-top:16px">2. Crea il link di conferma</button>
+        </form>
+
+        <section id="result" class="hidden">
+          <h2 class="sec">3. Invia al cliente</h2>
+          <div class="card">
+            <label class="f" style="margin-top:0">Messaggio (puoi modificarlo)<textarea class="out" id="msg" rows="9"></textarea></label>
+            <a class="btn wa" id="send-wa" target="_blank" rel="noopener" style="margin-top:12px">Invia su WhatsApp</a>
+            <button class="btn navy" id="copy" type="button">Copia messaggio</button>
+            <a class="btn ghost" id="test-link" target="_blank" rel="noopener">Prova il link</a>
+          </div>
+        </section>
+      </section>
+
+      <p class="note" style="text-align:center;margin-top:24px">Questa pagina non è collegata all'app: aprila solo dal tuo telefono.<br>La chiave segreta resta salvata in questo browser.</p>
+    </main>
+  </div>
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <script src="config.js?v=3"></script>
+  <script src="data.js?v=3"></script>
+  <script src="confirm.js?v=3"></script>
+  <script src="admin.js?v=3"></script>
+</body>
+</html>

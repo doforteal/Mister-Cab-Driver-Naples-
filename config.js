@@ -14,9 +14,16 @@ const CONFIG = {
   email: 'mrcabdrivernapoli@gmail.com',
   driverName: 'Ciro',
 
-  // Reservation fee (pre-trip fee). Replace with the real SumUp link.
+  // Reservation fee (pre-trip fee). The payment link is normally sent by
+  // Ciro on WhatsApp. Optional: a fixed SumUp link shown in the app too.
   depositAmount: 50,
   depositLink: '',                     // e.g. 'https://pay.sumup.com/b2c/XXXXXXX'
+
+  // Public key that checks the confirmation links Ciro sends.
+  // Create it once in admin.html ("Crea la chiave") and paste it here.
+  // Until it is set, bookings stay "Pending" and links cannot be opened.
+  confirmPublicKey: null,
+  appUrl: '',                          // optional: full URL of index.html used in links (default: same site)
 
   // Live shared tours (same Supabase as taximrcabpooling.com, read-only)
   supabaseUrl: 'https://muulovtjphqfzsjjovan.supabase.co',

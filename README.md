@@ -12,11 +12,27 @@ App per i clienti ispirata a Marriott Bonvoy, centrata sui servizi: tour privati
 | **Explore → Private** | Gli 11 tour del listino 2027 (Opt 1 … Opt 8 Bis) con tappe, prezzi per veicolo ed esclusioni. Il modulo calcola il prezzo in base alle persone e invia su WhatsApp (o email) il Confirmation Form già compilato. Se il pick-up è fuori Napoli il prezzo resta "da confermare". In inverno appare un avviso sulla Costiera chiusa. |
 | **Explore → Shared** | Gruppi aperti **in tempo reale** da taximrcabpooling.com (stessa base dati Supabase, solo lettura), con i posti liberi. "Join group" apre il sito pooling con tour e data già compilati. |
 | **Explore → Transfers** | Richiesta di preventivo transfer via WhatsApp |
-| **Trips** | Stato (Richiesta inviata → Anticipo pagato → Giorno del tour; dopo la data passa in "Past"), pulsante per l'anticipo di 50 € (link SumUp), tour pass con QR, promemoria biglietti Pompei, "Aggiungi al calendario", chat WhatsApp con Ciro |
+| **Trips** | Ogni richiesta ha un codice (es. `MC-6KNJQ`) e resta **Pending** finché Ciro non la conferma. Da confermata: tour pass con QR, saldo da pagare, promemoria biglietti Pompei, "Aggiungi al calendario". Sempre: chat WhatsApp con Ciro |
 | **Account** | Dati del cliente, contatti, Termini e condizioni, istruzioni di installazione |
 
+## Come si conferma una prenotazione
+1. Il cliente invia la richiesta dall'app: arriva su WhatsApp con il **codice prenotazione**. Nell'app risulta **Pending**.
+2. Ciro manda a mano il link di pagamento dei 50 € (SumUp).
+3. Dopo il pagamento Ciro apre **`admin.html`** sul suo telefono, incolla il messaggio del cliente, preme *Compila dal messaggio*, controlla i dati e preme *Crea il link di conferma*. Poi lo invia su WhatsApp (o lo copia).
+4. Il cliente apre il link: la prenotazione diventa **Confirmed** e compare il tour pass. Funziona anche su un altro telefono o se il cliente non aveva l'app: la prenotazione viene aggiunta.
+
+Il cliente **non può confermarsi da solo**: il link è firmato con una chiave segreta che esiste solo sul telefono di Ciro. Se il link viene modificato anche di un carattere, l'app lo rifiuta.
+
+### Attivazione (una volta sola)
+1. Apri `https://<indirizzo-app>/admin.html` sul telefono di Ciro e premi **Crea la chiave**.
+2. Premi **Copia chiave pubblica** (non è segreta) e incollala in `config.js` alla voce `confirmPublicKey`, poi ripubblica il sito.
+3. Premi **Scarica backup della chiave segreta** e conservalo in un posto sicuro. Non mandarlo a nessuno: serve solo per usare la chiave su un altro telefono (*Ho già una chiave*).
+
+`admin.html` non è collegata dall'app e non è indicizzata dai motori di ricerca. Senza la chiave segreta non può creare link validi.
+
 ## Da configurare (`config.js`)
-- `depositLink`: **inserisci il link SumUp** dell'anticipo. Finché è vuoto, il pulsante chiede il link a Ciro su WhatsApp.
+- `confirmPublicKey`: la chiave pubblica creata in `admin.html` (vedi sopra)
+- `depositLink` (facoltativo): un link SumUp fisso mostrato nelle prenotazioni in attesa. Se resta vuoto, Ciro manda il link a mano.
 - I prezzi dei tour sono in `data.js`
 
 ## Pubblicazione
@@ -26,7 +42,7 @@ Per provarla in locale: `python3 -m http.server` e apri http://localhost:8000.
 
 ## Limiti attuali (prototipo) e prossimi passi
 1. **I dati del cliente e i viaggi sono salvati sul suo telefono** (localStorage). Se cambia telefono o cancella i dati del browser, li perde.
-   → Prossimo passo: prenotazioni su **Supabase** (lo stesso progetto del pooling), con un pannello admin per Ciro.
-2. Lo stato "anticipo pagato" lo segna il cliente. Con il backend, lo confermerebbe Ciro dall'admin o un webhook di SumUp.
-3. Interfaccia solo in inglese (i clienti sono crocieristi). Si può aggiungere l'italiano.
-4. Le foto sono le due immagini del sito pooling: vanno sostituite con foto vere per ogni tour (cartella `img/`).
+   La conferma però si recupera sempre riaprendo il link di Ciro.
+   → Prossimo passo: prenotazioni su **Supabase** (lo stesso progetto del pooling), con un elenco delle richieste per Ciro.
+2. Interfaccia solo in inglese (i clienti sono crocieristi). Si può aggiungere l'italiano.
+3. Le foto sono le due immagini del sito pooling: vanno sostituite con foto vere per ogni tour (cartella `img/`).

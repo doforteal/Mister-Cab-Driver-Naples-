@@ -38,6 +38,11 @@ function load() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null; } catch { return null; }
 }
 let S = load() || { profile: null, trips: [] };
+// Statuses: 'pending' (until Ciro's confirmation link is opened), 'confirmed', 'cancelled'
+S.trips.forEach(t => {
+  if (t.status !== 'confirmed' && t.status !== 'cancelled') t.status = 'pending';
+  if (!t.code) t.code = makeBookingCode();
+});
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ profile: S.profile, trips: S.trips })); } catch { toast('Could not save on this device'); }
 }
@@ -45,6 +50,7 @@ function save() {
 const tourById = id => TOURS.find(t => t.id === id);
 // A trip is "past" when cancelled or once its date has gone by
 const isPastTrip = t => t.status === 'cancelled' || t.date < todayISO();
+const PENDING_CONFIRM_KEY = 'mcc_pending_confirm';
 
 function qrImg(text, cell = 5) {
   if (typeof qrcode === 'undefined') return `<div class="code-box">${esc(text)}</div>`;
@@ -63,12 +69,19 @@ const routes = {
   transfer: renderTransfer,
   trips: renderTrips,
   trip: renderTrip,
+  confirm: renderConfirm,
   account: renderAccount,
 };
 
 function router() {
   closeSheet();
-  if (!S.profile) { renderWelcome(); return; }
+  if (!S.profile) {
+    // Keep a confirmation link opened before sign-up, and apply it right after
+    const m = location.hash.match(/^#\/confirm\/(.+)$/);
+    if (m) { try { sessionStorage.setItem(PENDING_CONFIRM_KEY, m[1]); } catch { /* ignore */ } }
+    renderWelcome();
+    return;
+  }
   document.body.classList.remove('onboarding');
   const [name = 'home', arg] = location.hash.replace(/^#\/?/, '').split('/');
   const fn = routes[name] || renderHome;
@@ -91,7 +104,7 @@ function renderWelcome() {
       <li>Private day tours from the Port of Naples</li>
       <li>Shared tours: join a group and pay less</li>
       <li>Transfers: port, airport, station, hotel</li>
-      <li>Your tour pass, deposit link and chat with your driver</li>
+      <li>Your confirmation, tour pass and chat with your driver</li>
     </ul>
     <form class="card" id="join">
       <label class="f">Full name<input name="name" required autocomplete="name" /></label>
@@ -106,7 +119,9 @@ function renderWelcome() {
     const f = Object.fromEntries(new FormData(e.target));
     S.profile = { name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim(), joined: todayISO() };
     save();
-    location.hash = '#/home';
+    let pending = null;
+    try { pending = sessionStorage.getItem(PENDING_CONFIRM_KEY); sessionStorage.removeItem(PENDING_CONFIRM_KEY); } catch { /* ignore */ }
+    location.hash = pending ? '#/confirm/' + pending : '#/home';
     router();
   });
 }
@@ -138,12 +153,8 @@ function tripRow(t) {
 
 function statusChip(t) {
   if (t.status === 'cancelled') return '<span class="chip grey">Cancelled</span>';
-  if (isPastTrip(t)) return '<span class="chip ok">Completed</span>';
-  return {
-    requested: '<span class="chip">Request sent</span>',
-    deposit: '<span class="chip navy">Deposit paid</span>',
-    confirmed: '<span class="chip ok">Confirmed</span>',
-  }[t.status] || '';
+  if (t.status === 'confirmed') return isPastTrip(t) ? '<span class="chip ok">Completed</span>' : '<span class="chip ok">✓ Confirmed</span>';
+  return isPastTrip(t) ? '<span class="chip grey">Not confirmed</span>' : '<span class="chip">Pending</span>';
 }
 
 // ── HOME ──────────────────────────────────────────────────────
@@ -181,7 +192,8 @@ function renderHome() {
   <div class="card"><ol class="stops">
     <li><b>Choose your tour</b><div class="small muted">Prices are total per vehicle, up to 8 guests.</div></li>
     <li><b>Send the request</b><div class="small muted">We check availability and reply on WhatsApp.</div></li>
-    <li><b>Secure your date</b><div class="small muted">€${CONFIG.depositAmount} reservation fee, balance in cash on the day.</div></li>
+    <li><b>Secure your date</b><div class="small muted">Pay the €${CONFIG.depositAmount} reservation fee with the link we send you. Your booking stays <b>pending</b> until then.</div></li>
+    <li><b>Get your confirmation</b><div class="small muted">We send you a confirmation link: open it and your booking shows as confirmed.</div></li>
     <li><b>Enjoy the day</b><div class="small muted">Show your tour pass to the driver at pick-up.</div></li>
   </ol></div>
   <h2 class="sec">Other ports in Italy?</h2>
@@ -274,14 +286,20 @@ function addSharedTrip(g) {
     <p class="small muted">${esc(g.name)} · ${fmtDate(g.date)}</p>
     <form id="addsh">
       <label class="f">How many people did you book?<input name="people" type="number" min="1" max="13" value="2" required /></label>
-      <button class="btn" style="margin-top:16px">Add trip</button>
+      <p class="note">We send your booking code to ${esc(CONFIG.driverName)} on WhatsApp. It stays pending until we confirm it.</p>
+      <button class="btn wa" style="margin-top:16px">Add trip & notify ${esc(CONFIG.driverName)}</button>
     </form>`);
   $('#addsh').addEventListener('submit', e => {
     e.preventDefault();
     const people = +new FormData(e.target).get('people');
-    const trip = { id: uid('T'), kind: 'shared', tourId: g.id, title: g.name + ' (shared)', date: g.date, people,
-      pickup: g.mp || 'Meeting point', price: g.price ? g.price * people : null, status: 'requested', createdAt: Date.now() };
+    const trip = { id: uid('T'), code: makeBookingCode(), kind: 'shared', tourId: g.id, title: g.name + ' (shared)', date: g.date, people,
+      pickup: g.mp || 'Meeting point', price: g.price ? g.price * people : null, status: 'pending', createdAt: Date.now() };
+    const msg = [`Hello ${CONFIG.driverName}, I booked a shared tour on taximrcabpooling.com.`, '',
+      `- Booking code: ${trip.code}`, `- Name: ${S.profile.name}`, `- Mobile phone number: ${S.profile.phone}`,
+      `- Tour: ${trip.title}`, `- Date: ${fmtDate(g.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
+      `- Number of people: ${people}`, `- Location: ${trip.pickup}`].join('\n');
     S.trips.push(trip); save(); closeSheet();
+    window.open(waLink(msg), '_blank', 'noopener');
     location.hash = '#/trip/' + trip.id;
   });
 }
@@ -358,8 +376,10 @@ function renderBook(id) {
     const f = Object.fromEntries(new FormData(form));
     const far = !/Naples/.test(f.pickup);
     const price = far ? null : priceFor(t.scale, +f.people);
+    const code = makeBookingCode();
     const msg = [
       `Hello ${CONFIG.driverName}, I would like to book a private tour.`, '',
+      `- Booking code: ${code}`,
       `- Name: ${f.name}`,
       `- Date: ${fmtDate(f.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
       `- Mobile phone number: ${f.phone}`,
@@ -373,15 +393,15 @@ function renderBook(id) {
       `- Quoted fare: ${price ? eur(price) + ' total per vehicle' : 'to be confirmed'}`,
       '', 'I accept the Terms & Conditions.',
     ].filter(Boolean).join('\n');
-    const trip = { id: uid('T'), kind: 'private', tourId: t.id, title: `${t.code} · ${t.title}`, date: f.date, people: +f.people,
-      pickup: f.pickup, ship: f.ship, time: f.time, notes: f.notes, price, status: 'requested', createdAt: Date.now() };
+    const trip = { id: uid('T'), code, kind: 'private', tourId: t.id, title: `${t.code} · ${t.title}`, date: f.date, people: +f.people,
+      pickup: f.pickup, ship: f.ship, time: f.time, notes: f.notes, price, status: 'pending', createdAt: Date.now() };
     return { msg, trip };
   };
   const finish = (r, href) => {
     S.trips.push(r.trip); save();
     window.open(href, '_blank', 'noopener');
     location.hash = '#/trip/' + r.trip.id;
-    toast('Request saved in My Trips');
+    toast('Request sent · pending confirmation');
   };
   form.addEventListener('submit', e => { e.preventDefault(); const r = build(); if (r) finish(r, waLink(r.msg)); });
   $('#bymail').addEventListener('click', () => { const r = build(); if (r) finish(r, mailLink(`Tour request – ${t.code} – ${r.trip.date}`, r.msg)); });
@@ -409,13 +429,15 @@ function renderTransfer() {
   $('#tr').addEventListener('submit', e => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
+    const code = makeBookingCode();
     const msg = [`Hello ${CONFIG.driverName}, I need a transfer.`, '',
+      `- Booking code: ${code}`,
       `- Name: ${p.name}`, `- Mobile: ${p.phone}`, `- Email: ${p.email}`,
       `- From: ${f.from}`, `- To: ${f.to}`, `- Date & time: ${fmtDate(f.date)} at ${f.time}`,
       `- Passengers: ${f.people} · Suitcases: ${f.bags}`, f.ref ? `- Flight/train/ship: ${f.ref}` : '',
     ].filter(Boolean).join('\n');
-    const trip = { id: uid('T'), kind: 'transfer', title: `Transfer · ${f.from} → ${f.to}`, date: f.date, time: f.time,
-      people: +f.people, pickup: f.from, price: null, status: 'requested', createdAt: Date.now() };
+    const trip = { id: uid('T'), code, kind: 'transfer', title: `Transfer · ${f.from} → ${f.to}`, date: f.date, time: f.time,
+      people: +f.people, pickup: f.from, price: null, status: 'pending', createdAt: Date.now() };
     S.trips.push(trip); save();
     window.open(waLink(msg), '_blank', 'noopener');
     location.hash = '#/trip/' + trip.id;
@@ -438,37 +460,44 @@ function renderTrip(id) {
   if (!t) { location.hash = '#/trips'; return; }
   const tour = tourById(t.tourId);
   const past = isPastTrip(t);
-  const isPrivate = t.kind === 'private';
-  const secured = ['deposit', 'confirmed'].includes(t.status);
-  const idx = t.status === 'cancelled' ? -1 : past ? 2 : secured ? 1 : 0;
+  const confirmed = t.status === 'confirmed';
+  const idx = t.status === 'cancelled' ? -1 : confirmed ? (past ? 2 : 1) : 0;
   const hasPompeii = tour && /Pompeii/.test(tour.stops.join(' '));
-  const passText = `MISTERCAB|${t.id}|${S.profile.name}|${t.date}|${t.people}`;
-  const balance = t.price ? t.price - CONFIG.depositAmount : null;
+  const passText = `MISTERCAB|${t.code}|${t.name || S.profile.name}|${t.date}|${t.people}`;
+  const balance = t.price && t.kind !== 'shared' && t.kind !== 'transfer' ? t.price - CONFIG.depositAmount : null;
 
   let actions = '';
-  if (!past && t.status === 'requested') {
-    actions = isPrivate ? `
-      <div class="card"><b>Secure your date</b>
-        <p class="small muted" style="margin-top:4px">Once ${esc(CONFIG.driverName)} confirms availability, pay the €${CONFIG.depositAmount} reservation fee.${balance ? ` The balance of ${eur(balance)} is paid in cash on the day.` : ''}</p>
-        <a class="btn" style="margin-top:12px" target="_blank" rel="noopener" href="${CONFIG.depositLink || waLink(`Hello ${CONFIG.driverName}, could you send me the link for the €${CONFIG.depositAmount} reservation fee? (${t.title}, ${fmtDate(t.date)}, ${S.profile.name})`)}">Pay €${CONFIG.depositAmount} reservation fee</a>
-        <button class="btn ghost" id="paid">I have paid the fee</button>
-      </div>` : `
-      <div class="card"><b>Waiting for confirmation</b><p class="small muted" style="margin-top:4px">${esc(CONFIG.driverName)} will reply on WhatsApp.</p><button class="btn ghost" id="paid" style="margin-top:12px">Mark as confirmed</button></div>`;
+  if (!past && t.status === 'pending') {
+    actions = `
+      <div class="card">
+        <b>⏳ Pending confirmation</b>
+        <p class="small muted" style="margin-top:4px">Your booking is not confirmed yet.</p>
+        <ol class="stops" style="margin-top:6px">
+          <li><span class="small">${esc(CONFIG.driverName)} checks availability and replies on WhatsApp.</span></li>
+          ${t.kind === 'private' ? `<li><span class="small">He sends you the link to pay the €${CONFIG.depositAmount} reservation fee.${balance ? ` The balance of ${eur(balance)} is paid in cash on the day.` : ''}</span></li>` : ''}
+          <li><span class="small">Once everything is settled you receive a <b>confirmation link</b>: open it and this booking shows as <b>Confirmed</b>.</span></li>
+        </ol>
+        <p class="small muted" style="margin-top:10px">Mention your booking code <b>${esc(t.code)}</b> when you write to us.</p>
+        ${t.kind === 'private' && CONFIG.depositLink ? `<a class="btn" target="_blank" rel="noopener" href="${esc(CONFIG.depositLink)}">Pay €${CONFIG.depositAmount} reservation fee</a>` : ''}
+      </div>`;
   }
-  if (!past && secured) {
+  if (!past && confirmed) {
     actions = `
       <div class="card pass">
-        <div class="small muted" style="letter-spacing:.1em;text-transform:uppercase">Tour pass</div>
-        <h3 style="margin:4px 0 12px">${esc(S.profile.name)} · ${t.people} guest${t.people > 1 ? 's' : ''}</h3>
+        <div class="small muted" style="letter-spacing:.1em;text-transform:uppercase">Tour pass · ${esc(t.code)}</div>
+        <h3 style="margin:4px 0 12px">${esc(t.name || S.profile.name)} · ${t.people} guest${t.people > 1 ? 's' : ''}</h3>
         <div class="qr">${qrImg(passText)}</div>
         <p class="small muted" style="margin-top:10px">Show this to your driver at pick-up.</p>
       </div>
       ${hasPompeii ? `<div class="card"><b>🏛️ Pompeii tickets</b><p class="small muted" style="margin-top:4px">Buy them online about one month before (Pompeii Express, about €26). Want a licensed guide for 2h? €140 — ask ${esc(CONFIG.driverName)}.</p></div>` : ''}
       <button class="btn navy" id="ics">Add to calendar</button>`;
   }
-  if (past && t.status !== 'cancelled') {
+  if (past && confirmed) {
     actions = `<div class="card"><b>Grazie mille! ❤️</b><p class="small muted" style="margin-top:4px">We hope you enjoyed your day. A short post in your cruise Facebook group helps us a lot: “I booked with Taxi Mister Cab Driver – Naples”.</p></div>
       <a class="btn" href="#/explore">Book your next tour</a>`;
+  }
+  if (past && t.status === 'pending') {
+    actions = `<div class="card"><b>This request was not confirmed</b><p class="small muted" style="margin-top:4px">If you think this is a mistake, write to ${esc(CONFIG.driverName)} with your booking code ${esc(t.code)}.</p></div>`;
   }
 
   view.innerHTML = `
@@ -476,23 +505,56 @@ function renderTrip(id) {
   <h1 class="detail-title">${esc(t.title)}</h1>
   <p class="small muted">${fmtDate(t.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}${t.time ? ' · ' + esc(t.time) : ''}</p>
   <div style="margin-top:8px">${statusChip(t)}</div>
-  ${idx >= 0 ? `<div class="steps">${['Request sent', isPrivate ? 'Deposit paid' : 'Confirmed', t.kind === 'transfer' ? 'Done' : 'Tour day'].map((s, i) => `<div class="${i <= idx ? 'done' : ''}">${s}</div>`).join('')}</div>` : ''}
+  ${idx >= 0 ? `<div class="steps">${['Request sent', 'Confirmed', t.kind === 'transfer' ? 'Done' : 'Tour day'].map((s, i) => `<div class="${i <= idx ? 'done' : ''}">${s}</div>`).join('')}</div>` : ''}
   <div class="card" style="margin-top:14px"><ul class="plain">
+    <li><span class="muted">Booking code</span><b>${esc(t.code)}</b></li>
     <li><span class="muted">Guests</span><b>${t.people}</b></li>
     <li><span class="muted">Pick-up</span><b style="text-align:right">${esc(t.pickup || '-')}</b></li>
     ${t.ship ? `<li><span class="muted">Ship</span><b>${esc(t.ship)}</b></li>` : ''}
-    <li><span class="muted">Total</span><b>${t.price ? eur(t.price) + (t.kind === 'shared' ? '' : ' per vehicle') : 'to be confirmed'}</b></li>
+    <li><span class="muted">Total</span><b>${t.price ? eur(t.price) + (t.kind === 'private' ? ' per vehicle' : '') : 'to be confirmed'}</b></li>
+    ${confirmed && balance ? `<li><span class="muted">Balance on the day</span><b>${eur(balance)} in cash</b></li>` : ''}
   </ul></div>
   <div style="margin-top:12px">${actions}</div>
-  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${waLink(`Hello ${CONFIG.driverName}, about my trip: ${t.title} on ${fmtDate(t.date)} (${S.profile.name}).`)}">💬 Chat with ${esc(CONFIG.driverName)}</a>
-  ${!past ? '<button class="btn ghost" id="cancel" style="margin-top:10px">Cancel this request</button>' : ''}`;
+  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${waLink(`Hello ${CONFIG.driverName}, about my booking ${t.code}: ${t.title} on ${fmtDate(t.date)} (${S.profile.name}).`)}">💬 Chat with ${esc(CONFIG.driverName)}</a>
+  ${!past && t.status === 'pending' ? '<button class="btn ghost" id="cancel" style="margin-top:10px">Cancel this request</button>' : ''}`;
 
-  $('#paid')?.addEventListener('click', () => { t.status = isPrivate ? 'deposit' : 'confirmed'; save(); renderTrip(id); toast('Great, your date is secured!'); });
   $('#ics')?.addEventListener('click', () => downloadICS(t));
   $('#cancel')?.addEventListener('click', () => {
-    if (!confirm('Cancel this trip in the app? Please also tell your driver on WhatsApp. The €50 reservation fee is non-refundable.')) return;
+    if (!confirm('Cancel this request? Please also tell your driver on WhatsApp.')) return;
     t.status = 'cancelled'; save(); renderTrip(id);
   });
+}
+
+// ── CONFIRMATION LINK (sent by Ciro) ──────────────────────────
+async function renderConfirm(token) {
+  view.innerHTML = `<div class="card empty" style="margin-top:40px"><div class="big">🔐</div><p class="muted">Checking your confirmation…</p></div>`;
+  const res = await verifyConfirmation(token, CONFIG.confirmPublicKey);
+  if (!res.ok) {
+    view.innerHTML = `
+    <header class="top"><div><h1>Confirmation</h1></div></header>
+    <div class="card empty"><div class="big">⚠️</div>
+      <p><b>${res.reason === 'not-setup' ? 'Confirmations are not active yet.' : 'This confirmation link is not valid.'}</b></p>
+      <p class="small muted" style="margin-top:6px">Please check that you opened the whole link, or ask ${esc(CONFIG.driverName)} to send it again.</p>
+      <a class="btn wa" style="margin-top:14px" target="_blank" rel="noopener" href="${waLink(`Hello ${CONFIG.driverName}, my confirmation link does not open. (${S.profile.name})`)}">💬 Write to ${esc(CONFIG.driverName)}</a>
+      <a class="btn ghost" href="#/trips">My Trips</a></div>`;
+    return;
+  }
+  const d = res.data;
+  let t = S.trips.find(x => x.code === d.c);
+  if (!t) {
+    t = { id: uid('T'), code: d.c, createdAt: Date.now() };
+    S.trips.push(t);
+  }
+  // The confirmed details (as agreed with Ciro) replace what was requested
+  Object.assign(t, {
+    kind: d.k || t.kind || 'private', tourId: d.o || t.tourId, title: d.t || t.title, date: d.d || t.date,
+    time: d.h || t.time || '', people: d.p || t.people || 1, pickup: d.u || t.pickup || '', price: d.e ?? t.price ?? null,
+    name: d.n || t.name, status: 'confirmed', confirmedAt: Date.now(), proof: token,
+  });
+  save();
+  history.replaceState(null, '', '#/trip/' + t.id);
+  router();
+  toast('✅ Booking confirmed!');
 }
 
 function downloadICS(t) {
