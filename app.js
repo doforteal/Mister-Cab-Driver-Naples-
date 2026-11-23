@@ -70,7 +70,6 @@ const routes = {
   trips: renderTrips,
   trip: renderTrip,
   confirm: renderConfirm,
-  ports: renderPorts,
   account: renderAccount,
 };
 
@@ -86,7 +85,7 @@ function router() {
   document.body.classList.remove('onboarding');
   const [name = 'home', arg] = location.hash.replace(/^#\/?/, '').split('/');
   const fn = routes[name] || renderHome;
-  const tab = { tour: 'explore', book: 'explore', transfer: 'explore', ports: 'explore', trip: 'trips' }[name] || name;
+  const tab = { tour: 'explore', book: 'explore', transfer: 'explore', trip: 'trips' }[name] || name;
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   fn(arg);
   window.scrollTo(0, 0);
@@ -185,7 +184,7 @@ function renderHome() {
     <a href="#/explore"><span class="qi">🚐</span>Private tour</a>
     <a href="#/explore/shared"><span class="qi">👥</span>Shared tour</a>
     <a href="#/transfer"><span class="qi">🚖</span>Transfer</a>
-    <a href="#/ports"><span class="qi">🌍</span>Other ports</a>
+    <a href="${CONFIG.tourisfied}" target="_blank" rel="noopener"><span class="qi">🌍</span>Other ports</a>
   </div>
   <h2 class="sec">Private day tours <a href="#/explore">See all</a></h2>
   <div class="scroller">${featured.map(t => tourCard(t)).join('')}</div>
@@ -575,60 +574,15 @@ function downloadICS(t) {
   a.click();
 }
 
-// ── OTHER PORTS · TOURISFIED ──────────────────────────────────
-const PORTS = {
-  'Italy': ['Civitavecchia (Rome)', 'Livorno (Florence & Pisa)', 'La Spezia (Cinque Terre)', 'Genoa', 'Venice', 'Trieste',
-    'Ravenna', 'Bari', 'Brindisi', 'Messina (Taormina)', 'Catania', 'Palermo', 'Cagliari', 'Olbia', 'Salerno', 'Sorrento'],
-  'Mediterranean': ['Barcelona', 'Palma de Mallorca', 'Valencia', 'Marseille', 'Monaco / Nice', 'Ajaccio (Corsica)', 'Valletta (Malta)',
-    'Piraeus (Athens)', 'Santorini', 'Mykonos', 'Corfu', 'Katakolon (Olympia)', 'Dubrovnik', 'Split', 'Kotor', 'Istanbul', 'Kusadasi (Ephesus)'],
-};
-
+// ── TOURISFIED (link to the landing page) ─────────────────────
 function tourisfiedCard() {
   return `
-  <a class="card tf" href="#/ports" style="display:block">
+  <a class="card tf" href="${CONFIG.tourisfied}" target="_blank" rel="noopener" style="display:block">
     <div class="small" style="letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--terra)">TOURISFIED network</div>
     <b style="display:block;margin-top:4px;font-size:16px">Trusted drivers in Italy & every Mediterranean port</b>
-    <p class="small muted" style="margin-top:4px">Rome, Florence, Venice, Sicily, Barcelona, Athens, Santorini, Dubrovnik… Tell us your cruise ports and we connect you with a trusted local driver.</p>
-    <span class="small" style="font-weight:700;color:var(--navy);display:inline-block;margin-top:8px">Find drivers for my ports ›</span>
+    <p class="small muted" style="margin-top:4px">Other stops on your cruise? Discover trusted local drivers in Italy and across the Mediterranean.</p>
+    <span class="small" style="font-weight:700;color:var(--navy);display:inline-block;margin-top:8px">Visit tourisfied.com ›</span>
   </a>`;
-}
-
-function renderPorts() {
-  view.innerHTML = `
-  <a class="back" href="#/home">‹ Home</a>
-  <h1 class="detail-title">Your other ports</h1>
-  <p class="small muted">Naples is with us. For the rest of your cruise, <b>TOURISFIED</b> is our network of trusted, family-run local drivers in Italy and across the Mediterranean. Select your ports and ${esc(CONFIG.driverName)} will put you in touch.</p>
-  <form id="pf">
-    ${Object.entries(PORTS).map(([area, list]) => `
-      <h2 class="sec">${area === 'Italy' ? '🇮🇹 Italy' : '🌊 Mediterranean'}</h2>
-      <div class="pchips">${list.map(p => `<label class="pchip"><input type="checkbox" name="port" value="${esc(p)}" /><span>${esc(p)}</span></label>`).join('')}</div>`).join('')}
-    <label class="f" style="margin-top:18px">Other ports (optional)<input name="other" placeholder="e.g. Lisbon, Tunis, Haifa" /></label>
-    <div class="f2">
-      <label class="f">Cruise / ship<input name="ship" placeholder="e.g. MSC Seashore" /></label>
-      <label class="f">Guests<input name="people" type="number" min="1" max="60" value="2" /></label>
-    </div>
-    <label class="f">Dates or itinerary (optional)<textarea name="dates" rows="2" placeholder="e.g. Rome 12 May, Santorini 16 May"></textarea></label>
-    <button class="btn wa" style="margin-top:16px">Ask for trusted drivers on WhatsApp</button>
-    <a class="btn ghost" href="${CONFIG.tourisfied}" target="_blank" rel="noopener">Visit tourisfied.com</a>
-  </form>`;
-  $('#pf').addEventListener('submit', e => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const ports = fd.getAll('port');
-    const other = (fd.get('other') || '').trim();
-    if (other) ports.push(other);
-    if (!ports.length) { toast('Select at least one port'); return; }
-    const p = S.profile;
-    const msg = [`Hello ${CONFIG.driverName}, I am looking for trusted drivers (TOURISFIED) in my other cruise ports.`, '',
-      `- Name: ${p.name}`, `- Mobile: ${p.phone}`, `- Email: ${p.email}`,
-      `- Ports: ${ports.join(', ')}`,
-      fd.get('ship') ? `- Cruise / ship: ${fd.get('ship')}` : '',
-      `- Guests: ${fd.get('people') || '-'}`,
-      fd.get('dates') ? `- Dates / itinerary: ${fd.get('dates')}` : '',
-    ].filter(Boolean).join('\n');
-    window.open(waLink(msg), '_blank', 'noopener');
-    toast('Request sent to ' + CONFIG.driverName);
-  });
 }
 
 // ── ACCOUNT ───────────────────────────────────────────────────
@@ -650,7 +604,7 @@ function renderAccount() {
     <a href="mailto:${CONFIG.email}"><span>✉️ ${esc(CONFIG.email)}</span><span class="chev">›</span></a>
     <a href="${CONFIG.website}" target="_blank" rel="noopener"><span>🌐 taximistercabdriver.com</span><span class="chev">›</span></a>
     <a href="${CONFIG.poolingSite}" target="_blank" rel="noopener"><span>👥 taximrcabpooling.com</span><span class="chev">›</span></a>
-    <a href="#/ports"><span>🌍 TOURISFIED · other ports in Italy & the Mediterranean</span><span class="chev">›</span></a>
+    <a href="${CONFIG.tourisfied}" target="_blank" rel="noopener"><span>🌍 TOURISFIED · other ports in Italy & the Mediterranean</span><span class="chev">›</span></a>
   </div>
   <h2 class="sec">More</h2>
   <div class="card rows">

@@ -146,13 +146,7 @@ label.f input { min-width: 0; }
 .empty { text-align: center; padding: 34px 16px; }
 .empty .big { font-size: 40px; }
 
-/* ── port chips (Tourisfied) ───────────── */
-.pchips { display: flex; flex-wrap: wrap; gap: 8px; }
-.pchip { cursor: pointer; }
-.pchip input { position: absolute; opacity: 0; pointer-events: none; }
-.pchip span { display: inline-block; padding: 8px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); font-size: 14px; font-weight: 500; }
-.pchip input:checked + span { background: var(--navy); border-color: var(--navy); color: #fff; }
-.pchip input:focus-visible + span { outline: 2px solid var(--terra); outline-offset: 2px; }
+/* ── Tourisfied card ──────────────────── */
 .card.tf { border-left: 4px solid var(--terra); }
 
 /* ── list rows ──────────────────────────── */
