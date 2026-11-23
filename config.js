@@ -22,7 +22,7 @@ const CONFIG = {
   // Public key that checks the confirmation links Ciro sends.
   // Create it once in admin.html ("Crea la chiave") and paste it here.
   // Until it is set, bookings stay "Pending" and links cannot be opened.
-  confirmPublicKey: null,
+  confirmPublicKey: {"kty": "EC", "crv": "P-256", "x": "PvOd-KnpBmVoLcSs_aU0INboiNcN9Zpy2PNtsTKwPm8", "y": "yi1qJBjnWvLUz1oUcl1EC64WPBSIu-1chkYMChX96uc"},
   appUrl: '',                          // optional: full URL of index.html used in links (default: same site)
 
   // Live shared tours (same Supabase as taximrcabpooling.com, read-only)
