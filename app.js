@@ -528,7 +528,10 @@ function renderTrip(id) {
         <p class="small muted" style="margin-top:10px">Show this to your driver at pick-up.</p>
       </div>
       ${hasPompeii ? `<div class="card"><b>🏛️ Pompeii tickets</b><p class="small muted" style="margin-top:4px">Buy them online about one month before (Pompeii Express, about €26). Want a licensed guide for 2h? €140 — ask ${esc(CONFIG.driverName)}.</p></div>` : ''}
-      <button class="btn navy" id="ics">Add to calendar</button>
+      <div class="btns2">
+        <a class="btn navy" id="gcal" target="_blank" rel="noopener" href="${esc(googleCalendarUrl(t))}">📅 Google Calendar</a>
+        <button class="btn ghost" id="ics" type="button">📅 Apple / other (.ics)</button>
+      </div>
       <div style="margin-top:12px">${tourisfiedCard()}</div>`;
   }
   if (past && confirmed) {
@@ -600,19 +603,95 @@ async function renderConfirm(token) {
   toast('✅ Booking confirmed!');
 }
 
+// ── CALENDAR (.ics and Google Calendar) ───────────────────────
+// Everything the customer needs on the day, in one event.
+function calendarInfo(t) {
+  const tour = tourById(t.tourId);
+  const time = t.time || '08:00';
+  const hours = t.kind === 'transfer' ? 1 : 8;
+  const [y, mo, d] = t.date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  const fmt = dt => `${dt.getUTCFullYear()}${String(dt.getUTCMonth() + 1).padStart(2, '0')}${String(dt.getUTCDate()).padStart(2, '0')}T${String(dt.getUTCHours()).padStart(2, '0')}${String(dt.getUTCMinutes()).padStart(2, '0')}00`;
+  const start = fmt(new Date(Date.UTC(y, mo - 1, d, hh, mm)));
+  const end = fmt(new Date(Date.UTC(y, mo - 1, d, hh + hours, mm)));
+  const balance = t.kind === 'private' && t.price ? t.price - CONFIG.depositAmount : null;
+  const L = [];
+  L.push(`Booking code: ${t.code}`);
+  L.push(`Status: ${t.status === 'confirmed' ? 'CONFIRMED' : 'PENDING'}`);
+  L.push('');
+  L.push(`Date: ${fmtDate(t.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`);
+  L.push(`Meeting time: ${time}`);
+  L.push(`Guests: ${t.people}`);
+  L.push(`Pick-up: ${pickupText(t) || '-'}`);
+  if (t.ship) L.push(`Ship / flight / train: ${t.ship}`);
+  if (t.notes) L.push(`Notes: ${t.notes}`);
+  if (tour) {
+    L.push('', 'Your day:');
+    tour.stops.forEach((x, i) => L.push(`${i + 1}. ${x}`));
+  }
+  if (t.price) {
+    L.push('', t.kind === 'private' ? `Total: ${eur(t.price)} per vehicle` : `Total: ${eur(t.price)}`);
+    if (balance) L.push(`Reservation fee: €${CONFIG.depositAmount} (paid) · Balance on the day: ${eur(balance)} in cash (euros) to the driver`);
+  }
+  if (tour && tour.excluded.length) L.push(`Not included: ${tour.excluded.join(', ')}`);
+  L.push('', `Your driver: ${CONFIG.driverName} – ${CONFIG.brand}`,
+    `WhatsApp / phone: ${CONFIG.phoneDisplay}`, `Email: ${CONFIG.email}`,
+    `Your booking: ${location.href.split('#')[0]}#/trip/${t.id}`);
+  return {
+    title: `${t.title} – ${CONFIG.brand}`,
+    location: pickupText(t),
+    description: L.join('\n'),
+    start, end, time,
+  };
+}
+
+// iCalendar text rules: escape \ ; , and newlines; fold lines at 75 bytes
+const icsEscape = v => String(v).replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+function icsFold(line) {
+  const enc = new TextEncoder();
+  let out = '', cur = '', bytes = 0;
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > 75) { out += cur + '\r\n '; cur = ''; bytes = 1; }
+    cur += ch; bytes += n;
+  }
+  return out + cur;
+}
+
 function downloadICS(t) {
-  const d = t.date.replace(/-/g, '');
-  const [hh, mm] = (t.time || '08:00').split(':');
-  const endH = String(Math.min(23, +hh + (t.kind === 'transfer' ? 1 : 8))).padStart(2, '0');
-  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Taxi Mister Cab Driver//EN', 'BEGIN:VEVENT',
-    `UID:${t.id}@mistercab`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-    `DTSTART;TZID=Europe/Rome:${d}T${hh}${mm}00`, `DTEND;TZID=Europe/Rome:${d}T${endH}${mm}00`,
-    `SUMMARY:${t.title} – Taxi Mister Cab Driver`, `LOCATION:${pickupText(t).replace(/[,;]/g, ' ')}`,
-    `DESCRIPTION:Driver WhatsApp ${CONFIG.phoneDisplay}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const c = calendarInfo(t);
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Taxi Mister Cab Driver//Mister Cab App//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VTIMEZONE', 'TZID:Europe/Rome',
+    'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
+    'BEGIN:STANDARD', 'TZOFFSETFROM:+0200', 'TZOFFSETTO:+0100', 'TZNAME:CET', 'DTSTART:19701025T030000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD',
+    'END:VTIMEZONE',
+    'BEGIN:VEVENT',
+    `UID:${t.code || t.id}@mistercab-app`, `DTSTAMP:${stamp}`, 'SEQUENCE:0',
+    `DTSTART;TZID=Europe/Rome:${c.start}`, `DTEND;TZID=Europe/Rome:${c.end}`,
+    `SUMMARY:${icsEscape(c.title)}`,
+    ...(c.location ? [`LOCATION:${icsEscape(c.location)}`] : []),
+    `DESCRIPTION:${icsEscape(c.description)}`,
+    `STATUS:${t.status === 'confirmed' ? 'CONFIRMED' : 'TENTATIVE'}`,
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape('Tomorrow: ' + t.title)}`, 'TRIGGER:-P1D', 'END:VALARM',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape('Your driver meets you at ' + c.time)}`, 'TRIGGER:-PT2H', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR',
+  ];
+  const ics = lines.map(icsFold).join('\r\n') + '\r\n';
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-  a.download = 'mister-cab-trip.ics';
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+  a.download = `mister-cab-${t.code || 'trip'}.ics`;
   a.click();
+}
+
+function googleCalendarUrl(t) {
+  const c = calendarInfo(t);
+  const q = new URLSearchParams({
+    action: 'TEMPLATE', text: c.title, dates: `${c.start}/${c.end}`, ctz: 'Europe/Rome',
+    details: c.description, location: c.location || '',
+  });
+  return 'https://calendar.google.com/calendar/render?' + q.toString();
 }
 
 // ── TOURISFIED (link to the landing page) ─────────────────────
