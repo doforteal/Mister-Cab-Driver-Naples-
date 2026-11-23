@@ -16,10 +16,19 @@ App per i clienti ispirata a Marriott Bonvoy, centrata sui servizi: tour privati
 | **TOURISFIED** | Collegamento alla landing page tourisfied.com (driver di fiducia in Italia e in tutti i porti del Mediterraneo): in Home, nelle azioni rapide, nei viaggi confermati e completati, in Account e nel messaggio di conferma |
 | **Account** | Dati del cliente, contatti, Termini e condizioni, istruzioni di installazione |
 
+## Come arrivano le richieste
+Ogni richiesta (tour privato, transfer, tour condiviso) può arrivare **su WhatsApp** (+39 329 755 6193) **oppure via email** a **mrcabdrivernapoli@gmail.com**: il cliente sceglie il pulsante. In tutti e due i casi c'è il **codice prenotazione** e il riferimento all'app:
+- oggetto email: `[Mister Cab App] Booking request MC-TAJ5N – Opt 4 · Ravello, Amalfi & Positano – Wed, 2 Jun 2027` (oppure `Transfer request` / `Shared tour`)
+- ultima riga del testo: `— Sent from the Taxi Mister Cab Driver app`
+
+In Gmail puoi creare un filtro sull'oggetto `[Mister Cab App]` per dare a queste richieste un'etichetta.
+
+L'email parte dall'app di posta del cliente: il cliente deve premere "Invia".
+
 ## Come si conferma una prenotazione
-1. Il cliente invia la richiesta dall'app: arriva su WhatsApp con il **codice prenotazione**. Nell'app risulta **Pending**.
+1. Il cliente invia la richiesta dall'app (WhatsApp o email) con il **codice prenotazione**. Nell'app risulta **Pending**.
 2. Ciro manda a mano il link di pagamento dei 50 € (SumUp).
-3. Dopo il pagamento Ciro apre **`admin.html`** sul suo telefono, incolla il messaggio del cliente, preme *Compila dal messaggio*, controlla i dati e preme *Crea il link di conferma*. Poi lo invia su WhatsApp (o lo copia).
+3. Dopo il pagamento Ciro apre **`admin.html`** sul suo telefono, incolla il messaggio WhatsApp o l'email del cliente, preme *Compila dal messaggio*, controlla i dati e preme *Crea il link di conferma*. Poi lo invia su WhatsApp (o lo copia).
 4. Il cliente apre il link: la prenotazione diventa **Confirmed** e compare il tour pass. Funziona anche su un altro telefono o se il cliente non aveva l'app: la prenotazione viene aggiunta.
 
 Il cliente **non può confermarsi da solo**: il link è firmato con una chiave segreta che esiste solo sul telefono di Ciro. Se il link viene modificato anche di un carattere, l'app lo rifiuta.

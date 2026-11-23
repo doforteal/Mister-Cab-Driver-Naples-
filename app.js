@@ -17,6 +17,15 @@ const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short', y
 const waLink = text => `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(text)}`;
 const mailLink = (subj, body) => `mailto:${CONFIG.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
 
+// Booking requests go to Ciro by WhatsApp or by email (CONFIG.email).
+// Both always carry the booking code and say they come from the app.
+const APP_TAG = '[Mister Cab App]';
+function sendRequest(channel, { kindLabel, code, title, date, msg }) {
+  const body = `${msg}\n\n— Sent from the ${CONFIG.brand} app`;
+  const subject = `${APP_TAG} ${kindLabel} ${code} – ${title} – ${fmtDate(date)}`;
+  window.open(channel === 'email' ? mailLink(subject, body) : waLink(body), '_blank', 'noopener');
+}
+
 function toast(msg) {
   const t = $('#toast');
   t.textContent = msg;
@@ -191,7 +200,7 @@ function renderHome() {
   <h2 class="sec">How it works</h2>
   <div class="card"><ol class="stops">
     <li><b>Choose your tour</b><div class="small muted">Prices are total per vehicle, up to 8 guests.</div></li>
-    <li><b>Send the request</b><div class="small muted">We check availability and reply on WhatsApp.</div></li>
+    <li><b>Send the request</b><div class="small muted">On WhatsApp or by email. We check availability and reply.</div></li>
     <li><b>Secure your date</b><div class="small muted">Pay the €${CONFIG.depositAmount} reservation fee with the link we send you. Your booking stays <b>pending</b> until then.</div></li>
     <li><b>Get your confirmation</b><div class="small muted">We send you a confirmation link: open it and your booking shows as confirmed.</div></li>
     <li><b>Enjoy the day</b><div class="small muted">Show your tour pass to the driver at pick-up.</div></li>
@@ -286,12 +295,15 @@ function addSharedTrip(g) {
     <p class="small muted">${esc(g.name)} · ${fmtDate(g.date)}</p>
     <form id="addsh">
       <label class="f">How many people did you book?<input name="people" type="number" min="1" max="13" value="2" required /></label>
-      <p class="note">We send your booking code to ${esc(CONFIG.driverName)} on WhatsApp. It stays pending until we confirm it.</p>
-      <button class="btn wa" style="margin-top:16px">Add trip & notify ${esc(CONFIG.driverName)}</button>
+      <p class="note">We send your booking code to ${esc(CONFIG.driverName)} on WhatsApp or by email. It stays pending until we confirm it.</p>
+      <button class="btn wa" style="margin-top:16px">Add trip & notify on WhatsApp</button>
+      <button class="btn ghost" type="button" id="addsh-mail">Add trip & notify by email</button>
     </form>`);
-  $('#addsh').addEventListener('submit', e => {
-    e.preventDefault();
-    const people = +new FormData(e.target).get('people');
+  const form = $('#addsh');
+  form.addEventListener('submit', e => { e.preventDefault(); add('whatsapp'); });
+  $('#addsh-mail').addEventListener('click', () => { if (form.reportValidity()) add('email'); });
+  function add(channel) {
+    const people = +new FormData(form).get('people');
     const trip = { id: uid('T'), code: makeBookingCode(), kind: 'shared', tourId: g.id, title: g.name + ' (shared)', date: g.date, people,
       pickup: g.mp || 'Meeting point', price: g.price ? g.price * people : null, status: 'pending', createdAt: Date.now() };
     const msg = [`Hello ${CONFIG.driverName}, I booked a shared tour on taximrcabpooling.com.`, '',
@@ -299,9 +311,9 @@ function addSharedTrip(g) {
       `- Tour: ${trip.title}`, `- Date: ${fmtDate(g.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
       `- Number of people: ${people}`, `- Location: ${trip.pickup}`].join('\n');
     S.trips.push(trip); save(); closeSheet();
-    window.open(waLink(msg), '_blank', 'noopener');
+    sendRequest(channel, { kindLabel: 'Shared tour', code: trip.code, title: trip.title, date: trip.date, msg });
     location.hash = '#/trip/' + trip.id;
-  });
+  }
 }
 
 // ── TOUR DETAIL ───────────────────────────────────────────────
@@ -332,7 +344,7 @@ function renderBook(id) {
   view.innerHTML = `
   <a class="back" href="#/tour/${t.id}">‹ ${esc(t.code)}</a>
   <h1 class="detail-title">Request ${esc(t.title)}</h1>
-  <p class="small muted">We check availability and reply on WhatsApp. Nothing is charged now.</p>
+  <p class="small muted">We check availability and reply on WhatsApp or by email. Nothing is charged now.</p>
   <form id="bk">
     <div class="f2">
       <label class="f">Date<input name="date" type="date" min="${todayISO()}" required /></label>
@@ -354,7 +366,7 @@ function renderBook(id) {
     <p class="note" id="qnote"></p>
     <label class="f" style="display:flex;gap:10px;align-items:flex-start;font-weight:400"><input type="checkbox" name="terms" required style="width:auto;margin-top:3px" /> <span>I accept the <a href="#" id="seeterms" style="text-decoration:underline">Terms & Conditions</a> (€${CONFIG.depositAmount} non-refundable reservation fee).</span></label>
     <button class="btn wa" style="margin-top:16px">Send request on WhatsApp</button>
-    <button class="btn ghost" type="button" id="bymail">Send by email instead</button>
+    <button class="btn ghost" type="button" id="bymail">Send by email to ${esc(CONFIG.email)}</button>
   </form>`;
   const form = $('#bk');
   const upd = () => {
@@ -397,14 +409,14 @@ function renderBook(id) {
       pickup: f.pickup, ship: f.ship, time: f.time, notes: f.notes, price, status: 'pending', createdAt: Date.now() };
     return { msg, trip };
   };
-  const finish = (r, href) => {
+  const finish = (r, channel) => {
     S.trips.push(r.trip); save();
-    window.open(href, '_blank', 'noopener');
+    sendRequest(channel, { kindLabel: 'Booking request', code: r.trip.code, title: r.trip.title, date: r.trip.date, msg: r.msg });
     location.hash = '#/trip/' + r.trip.id;
     toast('Request sent · pending confirmation');
   };
-  form.addEventListener('submit', e => { e.preventDefault(); const r = build(); if (r) finish(r, waLink(r.msg)); });
-  $('#bymail').addEventListener('click', () => { const r = build(); if (r) finish(r, mailLink(`Tour request – ${t.code} – ${r.trip.date}`, r.msg)); });
+  form.addEventListener('submit', e => { e.preventDefault(); const r = build(); if (r) finish(r, 'whatsapp'); });
+  $('#bymail').addEventListener('click', () => { const r = build(); if (r) finish(r, 'email'); });
 }
 
 function showTerms() {
@@ -424,11 +436,14 @@ function renderTransfer() {
     <div class="f2"><label class="f">Passengers<input name="people" type="number" min="1" max="16" value="2" required /></label><label class="f">Suitcases<input name="bags" type="number" min="0" max="30" value="2" /></label></div>
     <label class="f">Flight / train / ship (optional)<input name="ref" /></label>
     <button class="btn wa" style="margin-top:16px">Ask for a quote on WhatsApp</button>
+    <button class="btn ghost" type="button" id="tr-mail">Ask by email to ${esc(CONFIG.email)}</button>
   </form>`;
   bindSeg();
-  $('#tr').addEventListener('submit', e => {
-    e.preventDefault();
-    const f = Object.fromEntries(new FormData(e.target));
+  const form = $('#tr');
+  form.addEventListener('submit', e => { e.preventDefault(); send('whatsapp'); });
+  $('#tr-mail').addEventListener('click', () => { if (form.reportValidity()) send('email'); });
+  function send(channel) {
+    const f = Object.fromEntries(new FormData(form));
     const code = makeBookingCode();
     const msg = [`Hello ${CONFIG.driverName}, I need a transfer.`, '',
       `- Booking code: ${code}`,
@@ -439,9 +454,10 @@ function renderTransfer() {
     const trip = { id: uid('T'), code, kind: 'transfer', title: `Transfer · ${f.from} → ${f.to}`, date: f.date, time: f.time,
       people: +f.people, pickup: f.from, price: null, status: 'pending', createdAt: Date.now() };
     S.trips.push(trip); save();
-    window.open(waLink(msg), '_blank', 'noopener');
+    sendRequest(channel, { kindLabel: 'Transfer request', code, title: trip.title, date: trip.date, msg });
     location.hash = '#/trip/' + trip.id;
-  });
+    toast('Request sent · pending confirmation');
+  }
 }
 
 // ── TRIPS ─────────────────────────────────────────────────────
@@ -473,7 +489,7 @@ function renderTrip(id) {
         <b>⏳ Pending confirmation</b>
         <p class="small muted" style="margin-top:4px">Your booking is not confirmed yet.</p>
         <ol class="stops" style="margin-top:6px">
-          <li><span class="small">${esc(CONFIG.driverName)} checks availability and replies on WhatsApp.</span></li>
+          <li><span class="small">${esc(CONFIG.driverName)} checks availability and replies on WhatsApp or by email.</span></li>
           ${t.kind === 'private' ? `<li><span class="small">He sends you the link to pay the €${CONFIG.depositAmount} reservation fee.${balance ? ` The balance of ${eur(balance)} is paid in cash on the day.` : ''}</span></li>` : ''}
           <li><span class="small">Once everything is settled you receive a <b>confirmation link</b>: open it and this booking shows as <b>Confirmed</b>.</span></li>
         </ol>
