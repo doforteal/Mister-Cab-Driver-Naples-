@@ -8,11 +8,12 @@ App per i clienti ispirata a Marriott Bonvoy, centrata sui servizi: tour privati
 
 | Sezione | Funzioni |
 |---|---|
-| **Home** | Saluto, scheda del prossimo viaggio, azioni rapide (tour privato, condiviso, transfer, WhatsApp), tour in evidenza, "come funziona" |
+| **Home** | Saluto, scheda del prossimo viaggio, azioni rapide (tour privato, condiviso, transfer, altri porti), tour in evidenza, "come funziona" |
 | **Explore → Private** | Gli 11 tour del listino 2027 (Opt 1 … Opt 8 Bis) con tappe, prezzi per veicolo ed esclusioni. Il modulo calcola il prezzo in base alle persone e invia su WhatsApp (o email) il Confirmation Form già compilato. Se il pick-up è fuori Napoli il prezzo resta "da confermare". In inverno appare un avviso sulla Costiera chiusa. |
 | **Explore → Shared** | Gruppi aperti **in tempo reale** da taximrcabpooling.com (stessa base dati Supabase, solo lettura), con i posti liberi. "Join group" apre il sito pooling con tour e data già compilati. |
 | **Explore → Transfers** | Richiesta di preventivo transfer via WhatsApp |
 | **Trips** | Ogni richiesta ha un codice (es. `MC-6KNJQ`) e resta **Pending** finché Ciro non la conferma. Da confermata: tour pass con QR, saldo da pagare, promemoria biglietti Pompei, "Aggiungi al calendario". Sempre: chat WhatsApp con Ciro |
+| **Other ports (TOURISFIED)** | Suggerimento della rete TOURISFIED per l'Italia e tutti i porti del Mediterraneo: in Home, nelle azioni rapide, nei viaggi confermati e completati, in Account e nel messaggio di conferma. Il cliente sceglie i porti della crociera (Civitavecchia, Livorno, Venezia, Sicilia, Barcellona, Atene, Santorini, Dubrovnik… o altri) e invia la richiesta a Ciro su WhatsApp, più link a tourisfied.com |
 | **Account** | Dati del cliente, contatti, Termini e condizioni, istruzioni di installazione |
 
 ## Come si conferma una prenotazione

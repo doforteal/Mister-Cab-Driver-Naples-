@@ -185,6 +185,7 @@ form.addEventListener('submit', async e => {
   ];
   if (balance) lines.push('', `Thank you for the reservation fee. The balance of €${balance} is paid in cash (euros) directly to the driver on the day.`);
   lines.push('', 'Open this link to see your confirmed booking and your tour pass in the app:', link,
+    '', 'Visiting other ports in Italy or the Mediterranean? Ask us about TOURISFIED, our network of trusted local drivers: www.tourisfied.com',
     '', `A presto, ${CONFIG.driverName} – ${CONFIG.brand} Team`);
   const msg = lines.join('\n');
   $('#msg').value = msg;

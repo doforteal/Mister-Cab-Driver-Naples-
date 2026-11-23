@@ -70,6 +70,7 @@ const routes = {
   trips: renderTrips,
   trip: renderTrip,
   confirm: renderConfirm,
+  ports: renderPorts,
   account: renderAccount,
 };
 
@@ -85,7 +86,7 @@ function router() {
   document.body.classList.remove('onboarding');
   const [name = 'home', arg] = location.hash.replace(/^#\/?/, '').split('/');
   const fn = routes[name] || renderHome;
-  const tab = { tour: 'explore', book: 'explore', transfer: 'explore', trip: 'trips' }[name] || name;
+  const tab = { tour: 'explore', book: 'explore', transfer: 'explore', ports: 'explore', trip: 'trips' }[name] || name;
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   fn(arg);
   window.scrollTo(0, 0);
@@ -184,7 +185,7 @@ function renderHome() {
     <a href="#/explore"><span class="qi">🚐</span>Private tour</a>
     <a href="#/explore/shared"><span class="qi">👥</span>Shared tour</a>
     <a href="#/transfer"><span class="qi">🚖</span>Transfer</a>
-    <a href="${waLink(`Hello ${CONFIG.driverName}!`)}" target="_blank" rel="noopener"><span class="qi">💬</span>WhatsApp</a>
+    <a href="#/ports"><span class="qi">🌍</span>Other ports</a>
   </div>
   <h2 class="sec">Private day tours <a href="#/explore">See all</a></h2>
   <div class="scroller">${featured.map(t => tourCard(t)).join('')}</div>
@@ -196,8 +197,8 @@ function renderHome() {
     <li><b>Get your confirmation</b><div class="small muted">We send you a confirmation link: open it and your booking shows as confirmed.</div></li>
     <li><b>Enjoy the day</b><div class="small muted">Show your tour pass to the driver at pick-up.</div></li>
   </ol></div>
-  <h2 class="sec">Other ports in Italy?</h2>
-  <a class="card" href="${CONFIG.tourisfied}" target="_blank" rel="noopener" style="display:block"><b>TOURISFIED network</b><p class="small muted" style="margin-top:4px">Trusted local drivers in other cruise ports. Tap to discover.</p></a>`;
+  <h2 class="sec">Your next ports</h2>
+  ${tourisfiedCard()}`;
 }
 
 // ── EXPLORE ───────────────────────────────────────────────────
@@ -490,11 +491,13 @@ function renderTrip(id) {
         <p class="small muted" style="margin-top:10px">Show this to your driver at pick-up.</p>
       </div>
       ${hasPompeii ? `<div class="card"><b>🏛️ Pompeii tickets</b><p class="small muted" style="margin-top:4px">Buy them online about one month before (Pompeii Express, about €26). Want a licensed guide for 2h? €140 — ask ${esc(CONFIG.driverName)}.</p></div>` : ''}
-      <button class="btn navy" id="ics">Add to calendar</button>`;
+      <button class="btn navy" id="ics">Add to calendar</button>
+      <div style="margin-top:12px">${tourisfiedCard()}</div>`;
   }
   if (past && confirmed) {
     actions = `<div class="card"><b>Grazie mille! ❤️</b><p class="small muted" style="margin-top:4px">We hope you enjoyed your day. A short post in your cruise Facebook group helps us a lot: “I booked with Taxi Mister Cab Driver – Naples”.</p></div>
-      <a class="btn" href="#/explore">Book your next tour</a>`;
+      <a class="btn" href="#/explore">Book your next tour</a>
+      <div style="margin-top:12px">${tourisfiedCard()}</div>`;
   }
   if (past && t.status === 'pending') {
     actions = `<div class="card"><b>This request was not confirmed</b><p class="small muted" style="margin-top:4px">If you think this is a mistake, write to ${esc(CONFIG.driverName)} with your booking code ${esc(t.code)}.</p></div>`;
@@ -572,6 +575,62 @@ function downloadICS(t) {
   a.click();
 }
 
+// ── OTHER PORTS · TOURISFIED ──────────────────────────────────
+const PORTS = {
+  'Italy': ['Civitavecchia (Rome)', 'Livorno (Florence & Pisa)', 'La Spezia (Cinque Terre)', 'Genoa', 'Venice', 'Trieste',
+    'Ravenna', 'Bari', 'Brindisi', 'Messina (Taormina)', 'Catania', 'Palermo', 'Cagliari', 'Olbia', 'Salerno', 'Sorrento'],
+  'Mediterranean': ['Barcelona', 'Palma de Mallorca', 'Valencia', 'Marseille', 'Monaco / Nice', 'Ajaccio (Corsica)', 'Valletta (Malta)',
+    'Piraeus (Athens)', 'Santorini', 'Mykonos', 'Corfu', 'Katakolon (Olympia)', 'Dubrovnik', 'Split', 'Kotor', 'Istanbul', 'Kusadasi (Ephesus)'],
+};
+
+function tourisfiedCard() {
+  return `
+  <a class="card tf" href="#/ports" style="display:block">
+    <div class="small" style="letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--terra)">TOURISFIED network</div>
+    <b style="display:block;margin-top:4px;font-size:16px">Trusted drivers in Italy & every Mediterranean port</b>
+    <p class="small muted" style="margin-top:4px">Rome, Florence, Venice, Sicily, Barcelona, Athens, Santorini, Dubrovnik… Tell us your cruise ports and we connect you with a trusted local driver.</p>
+    <span class="small" style="font-weight:700;color:var(--navy);display:inline-block;margin-top:8px">Find drivers for my ports ›</span>
+  </a>`;
+}
+
+function renderPorts() {
+  view.innerHTML = `
+  <a class="back" href="#/home">‹ Home</a>
+  <h1 class="detail-title">Your other ports</h1>
+  <p class="small muted">Naples is with us. For the rest of your cruise, <b>TOURISFIED</b> is our network of trusted, family-run local drivers in Italy and across the Mediterranean. Select your ports and ${esc(CONFIG.driverName)} will put you in touch.</p>
+  <form id="pf">
+    ${Object.entries(PORTS).map(([area, list]) => `
+      <h2 class="sec">${area === 'Italy' ? '🇮🇹 Italy' : '🌊 Mediterranean'}</h2>
+      <div class="pchips">${list.map(p => `<label class="pchip"><input type="checkbox" name="port" value="${esc(p)}" /><span>${esc(p)}</span></label>`).join('')}</div>`).join('')}
+    <label class="f" style="margin-top:18px">Other ports (optional)<input name="other" placeholder="e.g. Lisbon, Tunis, Haifa" /></label>
+    <div class="f2">
+      <label class="f">Cruise / ship<input name="ship" placeholder="e.g. MSC Seashore" /></label>
+      <label class="f">Guests<input name="people" type="number" min="1" max="60" value="2" /></label>
+    </div>
+    <label class="f">Dates or itinerary (optional)<textarea name="dates" rows="2" placeholder="e.g. Rome 12 May, Santorini 16 May"></textarea></label>
+    <button class="btn wa" style="margin-top:16px">Ask for trusted drivers on WhatsApp</button>
+    <a class="btn ghost" href="${CONFIG.tourisfied}" target="_blank" rel="noopener">Visit tourisfied.com</a>
+  </form>`;
+  $('#pf').addEventListener('submit', e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const ports = fd.getAll('port');
+    const other = (fd.get('other') || '').trim();
+    if (other) ports.push(other);
+    if (!ports.length) { toast('Select at least one port'); return; }
+    const p = S.profile;
+    const msg = [`Hello ${CONFIG.driverName}, I am looking for trusted drivers (TOURISFIED) in my other cruise ports.`, '',
+      `- Name: ${p.name}`, `- Mobile: ${p.phone}`, `- Email: ${p.email}`,
+      `- Ports: ${ports.join(', ')}`,
+      fd.get('ship') ? `- Cruise / ship: ${fd.get('ship')}` : '',
+      `- Guests: ${fd.get('people') || '-'}`,
+      fd.get('dates') ? `- Dates / itinerary: ${fd.get('dates')}` : '',
+    ].filter(Boolean).join('\n');
+    window.open(waLink(msg), '_blank', 'noopener');
+    toast('Request sent to ' + CONFIG.driverName);
+  });
+}
+
 // ── ACCOUNT ───────────────────────────────────────────────────
 function renderAccount() {
   const p = S.profile;
@@ -591,6 +650,7 @@ function renderAccount() {
     <a href="mailto:${CONFIG.email}"><span>✉️ ${esc(CONFIG.email)}</span><span class="chev">›</span></a>
     <a href="${CONFIG.website}" target="_blank" rel="noopener"><span>🌐 taximistercabdriver.com</span><span class="chev">›</span></a>
     <a href="${CONFIG.poolingSite}" target="_blank" rel="noopener"><span>👥 taximrcabpooling.com</span><span class="chev">›</span></a>
+    <a href="#/ports"><span>🌍 TOURISFIED · other ports in Italy & the Mediterranean</span><span class="chev">›</span></a>
   </div>
   <h2 class="sec">More</h2>
   <div class="card rows">
