@@ -17,6 +17,17 @@ const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short', y
 const waLink = text => `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(text)}`;
 const mailLink = (subj, body) => `mailto:${CONFIG.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
 
+// Customer reference added to every message sent to Ciro (name, mobile, email)
+function customerRef() {
+  const p = S.profile || {};
+  return ['- Name: ' + p.name, '- Mobile phone number: ' + p.phone, '- Email address: ' + p.email].join('\n');
+}
+// Short free-form message to Ciro (chat buttons), always with the customer's details
+function chatLink(topic, bookingLines = []) {
+  return waLink([`Hello ${CONFIG.driverName}, ${topic}`, '', ...bookingLines, customerRef(),
+    '', `— Sent from the ${CONFIG.brand} app`].join('\n'));
+}
+
 // Booking requests go to Ciro by WhatsApp or by email (CONFIG.email).
 // Both always carry the booking code and say they come from the app.
 const APP_TAG = '[Mister Cab App]';
@@ -175,7 +186,7 @@ function renderHome() {
   view.innerHTML = `
   <header class="top">
     <div class="brand"><img src="icons/logo.png" alt="" /><div><div class="sub">${hello},</div><h1>${esc(S.profile.name.split(' ')[0])}</h1></div></div>
-    <a class="icon-btn" href="${waLink(`Hello ${CONFIG.driverName}, I am ${S.profile.name}.`)}" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>
+    <a class="icon-btn" href="${chatLink('I would like to talk to you.')}" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>
   </header>
   ${next ? `
   <a class="mcard" href="#/trip/${next.id}" style="display:block">
@@ -307,7 +318,7 @@ function addSharedTrip(g) {
     const trip = { id: uid('T'), code: makeBookingCode(), kind: 'shared', tourId: g.id, title: g.name + ' (shared)', date: g.date, people,
       pickup: g.mp || 'Meeting point', price: g.price ? g.price * people : null, status: 'pending', createdAt: Date.now() };
     const msg = [`Hello ${CONFIG.driverName}, I booked a shared tour on taximrcabpooling.com.`, '',
-      `- Booking code: ${trip.code}`, `- Name: ${S.profile.name}`, `- Mobile phone number: ${S.profile.phone}`,
+      `- Booking code: ${trip.code}`, customerRef(),
       `- Tour: ${trip.title}`, `- Date: ${fmtDate(g.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
       `- Number of people: ${people}`, `- Location: ${trip.pickup}`].join('\n');
     S.trips.push(trip); save(); closeSheet();
@@ -533,7 +544,7 @@ function renderTrip(id) {
     ${confirmed && balance ? `<li><span class="muted">Balance on the day</span><b>${eur(balance)} in cash</b></li>` : ''}
   </ul></div>
   <div style="margin-top:12px">${actions}</div>
-  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${waLink(`Hello ${CONFIG.driverName}, about my booking ${t.code}: ${t.title} on ${fmtDate(t.date)} (${S.profile.name}).`)}">💬 Chat with ${esc(CONFIG.driverName)}</a>
+  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${chatLink('I have a question about my booking.', [`- Booking code: ${t.code}`, `- Booking: ${t.title}`, `- Date: ${fmtDate(t.date)}`, `- Status: ${t.status}`])}">💬 Chat with ${esc(CONFIG.driverName)}</a>
   ${!past && t.status === 'pending' ? '<button class="btn ghost" id="cancel" style="margin-top:10px">Cancel this request</button>' : ''}`;
 
   $('#ics')?.addEventListener('click', () => downloadICS(t));
@@ -553,7 +564,7 @@ async function renderConfirm(token) {
     <div class="card empty"><div class="big">⚠️</div>
       <p><b>${res.reason === 'not-setup' ? 'Confirmations are not active yet.' : 'This confirmation link is not valid.'}</b></p>
       <p class="small muted" style="margin-top:6px">Please check that you opened the whole link, or ask ${esc(CONFIG.driverName)} to send it again.</p>
-      <a class="btn wa" style="margin-top:14px" target="_blank" rel="noopener" href="${waLink(`Hello ${CONFIG.driverName}, my confirmation link does not open. (${S.profile.name})`)}">💬 Write to ${esc(CONFIG.driverName)}</a>
+      <a class="btn wa" style="margin-top:14px" target="_blank" rel="noopener" href="${chatLink('my confirmation link does not open.')}">💬 Write to ${esc(CONFIG.driverName)}</a>
       <a class="btn ghost" href="#/trips">My Trips</a></div>`;
     return;
   }
@@ -615,7 +626,7 @@ function renderAccount() {
   </form>
   <h2 class="sec">Contact us</h2>
   <div class="card rows">
-    <a href="${waLink('Hello ' + CONFIG.driverName + '!')}" target="_blank" rel="noopener"><span>💬 WhatsApp ${esc(CONFIG.phoneDisplay)}</span><span class="chev">›</span></a>
+    <a href="${chatLink('I would like to talk to you.')}" target="_blank" rel="noopener"><span>💬 WhatsApp ${esc(CONFIG.phoneDisplay)}</span><span class="chev">›</span></a>
     <a href="tel:+${CONFIG.whatsapp}"><span>📞 Call us</span><span class="chev">›</span></a>
     <a href="mailto:${CONFIG.email}"><span>✉️ ${esc(CONFIG.email)}</span><span class="chev">›</span></a>
     <a href="${CONFIG.website}" target="_blank" rel="noopener"><span>🌐 taximistercabdriver.com</span><span class="chev">›</span></a>
