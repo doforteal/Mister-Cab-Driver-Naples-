@@ -26,7 +26,7 @@ In Gmail puoi creare un filtro sull'oggetto `[Mister Cab App]` per dare a queste
 L'email parte dall'app di posta del cliente: il cliente deve premere "Invia".
 
 ## Come si conferma una prenotazione
-1. Il cliente invia la richiesta dall'app (WhatsApp o email). Il messaggio contiene **tutti i dettagli**: codice prenotazione, nome, telefono, email, tour, data, ora, persone, ritiro, nave/volo, note e prezzo. Nell'app la prenotazione risulta **Pending**.
+1. Il cliente invia la richiesta dall'app (WhatsApp o email). Il messaggio contiene **tutti i dettagli**: codice prenotazione, nome, telefono, email, tour, data, ora, numero di persone, punto di ritiro con **hotel o indirizzo** (obbligatorio se il ritiro non è al porto), **nave, volo o treno** (nome o numero), note e prezzo. Anche il pulsante "Chat with Ciro" di un viaggio manda tutti questi dettagli. Nell'app la prenotazione risulta **Pending**.
 2. Ciro gestisce tutto **fuori dall'app**: disponibilità, pagamento dei 50 € (link SumUp), accordi col cliente.
 3. A cose fatte apre **`admin.html`**, incolla la richiesta (o tocca *Incolla dagli appunti*): i dati si compilano da soli e compare un riepilogo. Se manca qualcosa lo segnala e lo si completa in *Correggi o completa i dati*.
 4. Preme **✅ Prenotazione completata – Conferma** (chiede un'ultima conferma) e poi *Invia su WhatsApp* (si apre la chat con il cliente) oppure *Invia per email*.

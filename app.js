@@ -17,6 +17,9 @@ const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short', y
 const waLink = text => `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(text)}`;
 const mailLink = (subj, body) => `mailto:${CONFIG.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
 
+// Full pick-up text of a trip: the chosen point plus hotel / address / terminal details
+const pickupText = t => [t.pickup, t.pickupDetail].filter(Boolean).join(' – ');
+
 // Customer reference added to every message sent to Ciro (name, mobile, email)
 function customerRef() {
   const p = S.profile || {};
@@ -166,7 +169,7 @@ function tripRow(t) {
   return `
   <a class="card trip" href="#/trip/${t.id}" style="display:flex">
     <div class="date"><b>${d.getDate()}</b><span>${d.toLocaleDateString('en-GB', { month: 'short' })}</span></div>
-    <div class="info"><h3>${esc(t.title)}</h3><div class="small muted">${esc(t.people)} guest${t.people > 1 ? 's' : ''} · ${esc(t.pickup || '')}</div><div style="margin-top:6px">${statusChip(t)}</div></div>
+    <div class="info"><h3>${esc(t.title)}</h3><div class="small muted">${esc(t.people)} guest${t.people > 1 ? 's' : ''} · ${esc(pickupText(t))}</div><div style="margin-top:6px">${statusChip(t)}</div></div>
     <span class="chev muted">›</span>
   </a>`;
 }
@@ -192,7 +195,7 @@ function renderHome() {
   <a class="mcard" href="#/trip/${next.id}" style="display:block">
     <div class="row"><div><div class="club">Your next trip</div><div class="name">${esc(next.title)}</div></div>${statusChip(next)}</div>
     <div class="pts"><b>${parseDate(next.date).getDate()}</b><span>${fmtDate(next.date, { month: 'long', year: 'numeric' })} · ${fmtDate(next.date, { weekday: 'long' })}</span></div>
-    <div class="next" style="margin-top:8px">${esc(next.people)} guest${next.people > 1 ? 's' : ''} · ${esc(next.pickup || '')}${next.time ? ' · ' + esc(next.time) : ''}</div>
+    <div class="next" style="margin-top:8px">${esc(next.people)} guest${next.people > 1 ? 's' : ''} · ${esc(pickupText(next))}${next.time ? ' · ' + esc(next.time) : ''}</div>
   </a>` : `
   <div class="mcard">
     <div class="club">${esc(CONFIG.brand)}</div>
@@ -306,6 +309,8 @@ function addSharedTrip(g) {
     <p class="small muted">${esc(g.name)} · ${fmtDate(g.date)}</p>
     <form id="addsh">
       <label class="f">How many people did you book?<input name="people" type="number" min="1" max="13" value="2" required /></label>
+      <label class="f">Hotel, address or ship (optional)<input name="where" placeholder="e.g. Hotel Excelsior, Naples · MSC Seashore" /></label>
+      <label class="f">Flight or train number (optional)<input name="ref" /></label>
       <p class="note">We send your booking code to ${esc(CONFIG.driverName)} on WhatsApp or by email. It stays pending until we confirm it.</p>
       <button class="btn wa" style="margin-top:16px">Add trip & notify on WhatsApp</button>
       <button class="btn ghost" type="button" id="addsh-mail">Add trip & notify by email</button>
@@ -314,13 +319,16 @@ function addSharedTrip(g) {
   form.addEventListener('submit', e => { e.preventDefault(); add('whatsapp'); });
   $('#addsh-mail').addEventListener('click', () => { if (form.reportValidity()) add('email'); });
   function add(channel) {
-    const people = +new FormData(form).get('people');
+    const fd = new FormData(form);
+    const people = +fd.get('people');
+    const where = (fd.get('where') || '').trim(), ref = (fd.get('ref') || '').trim();
     const trip = { id: uid('T'), code: makeBookingCode(), kind: 'shared', tourId: g.id, title: g.name + ' (shared)', date: g.date, people,
-      pickup: g.mp || 'Meeting point', price: g.price ? g.price * people : null, status: 'pending', createdAt: Date.now() };
+      pickup: g.mp || 'Meeting point', pickupDetail: where, ship: ref, price: g.price ? g.price * people : null, status: 'pending', createdAt: Date.now() };
     const msg = [`Hello ${CONFIG.driverName}, I booked a shared tour on taximrcabpooling.com.`, '',
       `- Booking code: ${trip.code}`, customerRef(),
       `- Tour: ${trip.title}`, `- Date: ${fmtDate(g.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
-      `- Number of people: ${people}`, `- Location: ${trip.pickup}`].join('\n');
+      `- Number of people: ${people}`, `- Location: ${trip.pickup}`,
+      where ? `- Pick-up details: ${where}` : '', `- Ship / flight / train number: ${ref || '-'}`].filter(Boolean).join('\n');
     S.trips.push(trip); save(); closeSheet();
     sendRequest(channel, { kindLabel: 'Shared tour', code: trip.code, title: trip.title, date: trip.date, msg });
     location.hash = '#/trip/' + trip.id;
@@ -362,10 +370,9 @@ function renderBook(id) {
       <label class="f">Guests<select name="people">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option ${n === 2 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     </div>
     <label class="f">Pick-up<select name="pickup">${PICKUPS.map(x => `<option>${x}</option>`).join('')}</select></label>
-    <div class="f2">
-      <label class="f">Cruise / ship<input name="ship" placeholder="e.g. MSC Seashore" /></label>
-      <label class="f">Meeting time<input name="time" type="time" value="08:00" /></label>
-    </div>
+    <label class="f"><span id="pd-label">Terminal / extra details (optional)</span><input name="pickupdetail" id="pd" placeholder="Hotel name and address, station, terminal…" /></label>
+    <label class="f">Ship, flight or train (name or number)<input name="ship" placeholder="e.g. MSC Seashore · flight AZ1234 · train FR9620" /></label>
+    <label class="f">Meeting time<input name="time" type="time" value="08:00" /></label>
     <label class="f">Wishes (lunch, kids, mobility…)<textarea name="notes" rows="2"></textarea></label>
     <div class="f2">
       <label class="f">Name<input name="name" value="${esc(p.name)}" required /></label>
@@ -386,6 +393,9 @@ function renderBook(id) {
     const far = !/Naples/.test(f.pickup);
     $('#qprice').textContent = far ? 'to be confirmed' : eur(price);
     $('#qnote').textContent = far ? 'Pick-up outside Naples: we will confirm itinerary and fare with you.' : `${f.people} guest${f.people > 1 ? 's' : ''} · balance on the day ${eur(price - CONFIG.depositAmount)} in cash (euros).`;
+    const atPort = f.pickup === PICKUPS[0];
+    $('#pd').required = !atPort;
+    $('#pd-label').textContent = atPort ? 'Terminal / extra details (optional)' : 'Hotel name & address, or meeting point';
     const m = f.date ? parseDate(f.date).getMonth() : -1;
     const coast = /Amalfi|Positano|Ravello|Sorrento/.test(t.title);
     $('#season').innerHTML = coast && m !== -1 && (m >= 10 || m <= 2)
@@ -409,15 +419,16 @@ function renderBook(id) {
       `- Email address: ${f.email}`,
       `- Number of people: ${f.people}`,
       `- Option chosen: ${t.code} – ${t.title}`,
-      `- Cruise company / ship name: ${f.ship || '-'}`,
+      `- Ship / flight / train number: ${f.ship || '-'}`,
       `- Meeting time: ${f.time || 'as soon as we disembark'}`,
       `- Location: ${f.pickup}`,
+      f.pickupdetail ? `- Pick-up details: ${f.pickupdetail}` : '',
       f.notes ? `- Notes: ${f.notes}` : '',
       `- Quoted fare: ${price ? eur(price) + ' total per vehicle' : 'to be confirmed'}`,
       '', 'I accept the Terms & Conditions.',
     ].filter(Boolean).join('\n');
     const trip = { id: uid('T'), code, kind: 'private', tourId: t.id, title: `${t.code} · ${t.title}`, date: f.date, people: +f.people,
-      pickup: f.pickup, ship: f.ship, time: f.time, notes: f.notes, price, status: 'pending', createdAt: Date.now() };
+      pickup: f.pickup, pickupDetail: (f.pickupdetail || '').trim(), ship: f.ship, time: f.time, notes: f.notes, price, status: 'pending', createdAt: Date.now() };
     return { msg, trip };
   };
   const finish = (r, channel) => {
@@ -441,11 +452,11 @@ function renderTransfer() {
   view.innerHTML = exploreHeader('transfer') + `
   <p class="small muted" style="margin-bottom:6px">Port, airport, station, hotel, Amalfi Coast, Sorrento, Rome… Tell us where and when: we reply with the fare.</p>
   <form id="tr">
-    <label class="f">From<input name="from" required placeholder="e.g. Naples Airport" /></label>
-    <label class="f">To<input name="to" required placeholder="e.g. Hotel in Positano" /></label>
+    <label class="f">From (airport, port, hotel or address)<input name="from" required placeholder="e.g. Naples Airport, or Hotel Excelsior, Via Partenope 48" /></label>
+    <label class="f">To (hotel or address)<input name="to" required placeholder="e.g. Hotel Le Sirenuse, Via Colombo 30, Positano" /></label>
     <div class="f2"><label class="f">Date<input name="date" type="date" min="${todayISO()}" required /></label><label class="f">Time<input name="time" type="time" required /></label></div>
     <div class="f2"><label class="f">Passengers<input name="people" type="number" min="1" max="16" value="2" required /></label><label class="f">Suitcases<input name="bags" type="number" min="0" max="30" value="2" /></label></div>
-    <label class="f">Flight / train / ship (optional)<input name="ref" /></label>
+    <label class="f">Flight, train or ship (name or number)<input name="ref" placeholder="e.g. flight AZ1234 · train FR9620 · MSC Seashore" /></label>
     <button class="btn wa" style="margin-top:16px">Ask for a quote on WhatsApp</button>
     <button class="btn ghost" type="button" id="tr-mail">Ask by email to ${esc(CONFIG.email)}</button>
   </form>`;
@@ -460,10 +471,10 @@ function renderTransfer() {
       `- Booking code: ${code}`,
       `- Name: ${p.name}`, `- Mobile: ${p.phone}`, `- Email: ${p.email}`,
       `- From: ${f.from}`, `- To: ${f.to}`, `- Date & time: ${fmtDate(f.date)} at ${f.time}`,
-      `- Passengers: ${f.people} · Suitcases: ${f.bags}`, f.ref ? `- Flight/train/ship: ${f.ref}` : '',
+      `- Passengers: ${f.people} · Suitcases: ${f.bags}`, `- Ship / flight / train number: ${f.ref || '-'}`,
     ].filter(Boolean).join('\n');
     const trip = { id: uid('T'), code, kind: 'transfer', title: `Transfer · ${f.from} → ${f.to}`, date: f.date, time: f.time,
-      people: +f.people, pickup: f.from, price: null, status: 'pending', createdAt: Date.now() };
+      people: +f.people, pickup: f.from, ship: f.ref || '', price: null, status: 'pending', createdAt: Date.now() };
     S.trips.push(trip); save();
     sendRequest(channel, { kindLabel: 'Transfer request', code, title: trip.title, date: trip.date, msg });
     location.hash = '#/trip/' + trip.id;
@@ -538,13 +549,16 @@ function renderTrip(id) {
   <div class="card" style="margin-top:14px"><ul class="plain">
     <li><span class="muted">Booking code</span><b>${esc(t.code)}</b></li>
     <li><span class="muted">Guests</span><b>${t.people}</b></li>
-    <li><span class="muted">Pick-up</span><b style="text-align:right">${esc(t.pickup || '-')}</b></li>
-    ${t.ship ? `<li><span class="muted">Ship</span><b>${esc(t.ship)}</b></li>` : ''}
+    <li><span class="muted">Pick-up</span><b style="text-align:right">${esc(pickupText(t) || '-')}</b></li>
+    ${t.ship ? `<li><span class="muted">Ship / flight / train</span><b style="text-align:right">${esc(t.ship)}</b></li>` : ''}
+    ${t.time ? `<li><span class="muted">Meeting time</span><b>${esc(t.time)}</b></li>` : ''}
     <li><span class="muted">Total</span><b>${t.price ? eur(t.price) + (t.kind === 'private' ? ' per vehicle' : '') : 'to be confirmed'}</b></li>
     ${confirmed && balance ? `<li><span class="muted">Balance on the day</span><b>${eur(balance)} in cash</b></li>` : ''}
   </ul></div>
   <div style="margin-top:12px">${actions}</div>
-  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${chatLink('I have a question about my booking.', [`- Booking code: ${t.code}`, `- Booking: ${t.title}`, `- Date: ${fmtDate(t.date)}`, `- Status: ${t.status}`])}">💬 Chat with ${esc(CONFIG.driverName)}</a>
+  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${chatLink('I have a question about my booking.', [`- Booking code: ${t.code}`, `- Booking: ${t.title}`, `- Date: ${fmtDate(t.date)}${t.time ? ' at ' + t.time : ''}`,
+    `- Number of people: ${t.people}`, `- Location: ${t.pickup || '-'}`, t.pickupDetail ? `- Pick-up details: ${t.pickupDetail}` : '',
+    `- Ship / flight / train number: ${t.ship || '-'}`, t.notes ? `- Notes: ${t.notes}` : '', `- Status: ${t.status}`].filter(Boolean))}">💬 Chat with ${esc(CONFIG.driverName)}</a>
   ${!past && t.status === 'pending' ? '<button class="btn ghost" id="cancel" style="margin-top:10px">Cancel this request</button>' : ''}`;
 
   $('#ics')?.addEventListener('click', () => downloadICS(t));
@@ -593,7 +607,7 @@ function downloadICS(t) {
   const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Taxi Mister Cab Driver//EN', 'BEGIN:VEVENT',
     `UID:${t.id}@mistercab`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     `DTSTART;TZID=Europe/Rome:${d}T${hh}${mm}00`, `DTEND;TZID=Europe/Rome:${d}T${endH}${mm}00`,
-    `SUMMARY:${t.title} – Taxi Mister Cab Driver`, `LOCATION:${(t.pickup || '').replace(/[,;]/g, ' ')}`,
+    `SUMMARY:${t.title} – Taxi Mister Cab Driver`, `LOCATION:${pickupText(t).replace(/[,;]/g, ' ')}`,
     `DESCRIPTION:Driver WhatsApp ${CONFIG.phoneDisplay}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));

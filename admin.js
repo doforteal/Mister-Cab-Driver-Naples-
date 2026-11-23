@@ -179,27 +179,35 @@ function parseRequest(txt) {
   set('email', get('Email address') || get('Email'));
   let d = get('Date'), time = get('Meeting time');
   const dt = get('Date & time');
-  if (dt) { d = dt; const tm = dt.match(/at\s+(\d{1,2}:\d{2})/); if (tm) time = tm[1]; }
+  if (dt) d = dt;
+  if (!time) { const tm = d.match(/at\s+(\d{1,2}:\d{2})/); if (tm) time = tm[1]; }   // "Date: Sun, 7 Mar 2027 at 08:00"
+  const booking = get('Booking');                                                  // line of the chat message
   if (d) set('d', parseEnglishDate(d));
   if (/^\d{1,2}:\d{2}$/.test(time)) set('h', time.padStart(5, '0'));
   const people = parseInt(get('Number of people') || get('Passengers'));
   if (people) set('p', people);
-  set('s', get('Cruise company / ship name').replace(/^-$/, '') || get('Flight/train/ship'));
+  const ship = get('Ship / flight / train number') || get('Cruise company / ship name') || get('Flight/train/ship');
+  set('s', ship.replace(/^-$/, ''));
+  const detail = get('Pick-up details');
+  const place = (loc) => [loc, detail].filter(Boolean).join(' – ');
   set('x', get('Notes'));
   if (/I need a transfer/i.test(txt)) {
     form.k.value = 'transfer';
     const from = get('From'), to = get('To');
     set('t', `Transfer · ${from} → ${to}`); set('u', from);
-  } else if (/shared tour/i.test(txt)) {
+  } else if (/^Transfer\s*·/i.test(booking)) {
+    form.k.value = 'transfer';
+    set('t', booking); set('u', place(get('Location')));
+  } else if (/shared tour/i.test(txt) || /\(shared\)/i.test(booking)) {
     form.k.value = 'shared';
-    set('t', get('Tour')); set('u', get('Location'));
+    set('t', get('Tour') || booking); set('u', place(get('Location')));
   } else {
     form.k.value = 'private';
-    const opt = get('Option chosen');
+    const opt = get('Option chosen') || booking;
     // Prefer the longest matching code ("Opt 2 Bis" before "Opt 2")
     const best = opt ? TOURS.filter(t => opt.toLowerCase().startsWith(t.code.toLowerCase())).sort((a, b) => b.code.length - a.code.length)[0] : null;
     if (best) { tourSel.value = best.id; set('t', `${best.code} · ${best.title}`); } else set('t', opt);
-    set('u', get('Location'));
+    set('u', place(get('Location')));
   }
   const fare = get('Quoted fare').match(/€\s?([\d,.]+)/);
   if (fare) set('e', fare[1].replace(/[,.]/g, '')); else updatePrice();
