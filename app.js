@@ -578,7 +578,7 @@ async function renderConfirm(token) {
   Object.assign(t, {
     kind: d.k || t.kind || 'private', tourId: d.o || t.tourId, title: d.t || t.title, date: d.d || t.date,
     time: d.h || t.time || '', people: d.p || t.people || 1, pickup: d.u || t.pickup || '', price: d.e ?? t.price ?? null,
-    name: d.n || t.name, status: 'confirmed', confirmedAt: Date.now(), proof: token,
+    name: d.n || t.name, ship: d.s || t.ship || '', status: 'confirmed', confirmedAt: Date.now(), proof: token,
   });
   save();
   history.replaceState(null, '', '#/trip/' + t.id);

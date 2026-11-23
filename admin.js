@@ -1,9 +1,10 @@
 /* ============================================================
-   admin.html — Ciro creates signed confirmation links
+   admin.html — Ciro confirms a booking with one button (signed link)
    The private key is generated here and stored only in this browser.
    ============================================================ */
 
 const KEY_STORE = 'mcc_admin_signing_key';
+const HIST_STORE = 'mcc_admin_history';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -105,17 +106,59 @@ const form = $('#cf');
 const tourSel = $('#tour-sel');
 tourSel.innerHTML = '<option value="">— altro / scrivi il titolo —</option>' +
   TOURS.map(t => `<option value="${t.id}">${esc(t.code)} · ${esc(t.title)}</option>`).join('');
+
+const val = () => Object.fromEntries(new FormData(form));
+const KIND_LABEL = { private: 'Tour privato', shared: 'Tour condiviso', transfer: 'Transfer' };
+const fmtLong = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const fmtShort = d => new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
 tourSel.addEventListener('change', () => {
   const t = TOURS.find(x => x.id === tourSel.value);
   if (t) { form.t.value = `${t.code} · ${t.title}`; form.k.value = 'private'; updatePrice(); }
+  renderSummary();
 });
-form.p.addEventListener('input', updatePrice);
 function updatePrice() {
   const t = TOURS.find(x => x.id === tourSel.value);
   if (t && form.k.value === 'private' && !form.e.dataset.touched) form.e.value = priceFor(t.scale, +form.p.value) ?? '';
 }
 form.e.addEventListener('input', () => { form.e.dataset.touched = '1'; });
-form.c.value = makeBookingCode();
+form.p.addEventListener('input', updatePrice);
+form.addEventListener('input', renderSummary);
+
+// What must be there before the booking can be confirmed
+const REQUIRED = [['c', 'codice prenotazione'], ['t', 'titolo'], ['d', 'data'], ['p', 'persone'], ['u', 'punto di ritiro'], ['n', 'nome cliente']];
+const missing = v => REQUIRED.filter(([k]) => !String(v[k] ?? '').trim()).map(([, l]) => l);
+
+function renderSummary() {
+  const v = val();
+  const miss = missing(v);
+  const any = REQUIRED.some(([k]) => String(v[k] ?? '').trim()) && (v.c || v.n || v.t);
+  $('#summary').classList.toggle('hidden', !any);
+  const row = (label, value, req) => {
+    const empty = !String(value ?? '').trim();
+    return `<li><span class="muted">${label}</span><span class="v">${empty ? (req ? '<b class="miss">⚠ manca</b>' : '—') : esc(value)}</span></li>`;
+  };
+  $('#summary-body').innerHTML = [
+    row('Tipo', KIND_LABEL[v.k]),
+    row('Codice', v.c, true),
+    row('Cliente', v.n, true),
+    row('WhatsApp', v.phone),
+    row('Email', v.email),
+    row('Tour', v.t, true),
+    row('Data', v.d ? fmtShort(v.d) : '', true),
+    row('Ora', v.h),
+    row('Persone', v.p, true),
+    row('Ritiro', v.u, true),
+    row('Nave / volo', v.s),
+    row('Totale', v.e ? '€' + v.e : ''),
+    row('Note', v.x),
+  ].join('');
+  $('#miss-box').innerHTML = miss.length
+    ? `<div class="warn-box">Mancano: <b>${miss.join(', ')}</b>. Compilali in “Correggi o completa i dati”.</div>`
+    : (!v.phone && !v.email ? `<div class="warn-box">Non c’è né WhatsApp né email del cliente: potrai comunque copiare il messaggio.</div>` : '');
+  if (miss.length) $('#edit').open = true;
+  $('#confirm').disabled = false;
+}
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 function parseEnglishDate(s) {
@@ -125,59 +168,78 @@ function parseEnglishDate(s) {
   return mi < 0 ? '' : `${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
 
-// Reads the WhatsApp messages the app sends (Confirmation Form format)
-$('#parse').addEventListener('click', () => {
-  const txt = $('#paste').value;
-  if (!txt.trim()) { toast('Incolla prima il messaggio'); return; }
-  const get = label => { const m = txt.match(new RegExp('^\\s*-?\\s*' + label + '\\s*:\\s*(.+)$', 'im')); return m ? m[1].trim() : ''; };
-  const code = get('Booking code'); if (code) form.c.value = code.toUpperCase();
-  const name = get('Name'); if (name) form.n.value = name;
-  const phone = get('Mobile phone number') || get('Mobile'); if (phone) form.phone.value = phone;
-  let d = get('Date'); let time = get('Meeting time');
+// Reads the requests the app sends (WhatsApp or email, same lines)
+function parseRequest(txt) {
+  const get = label => { const m = txt.match(new RegExp('^[\\s>]*[-•*]?\\s*' + label + '\\s*:\\s*(.+)$', 'im')); return m ? m[1].trim() : ''; };
+  const set = (name, v) => { if (v !== undefined && v !== null && v !== '') form[name].value = v; };
+  form.reset(); delete form.e.dataset.touched; tourSel.value = '';
+  set('c', get('Booking code').toUpperCase());
+  set('n', get('Name'));
+  set('phone', get('Mobile phone number') || get('Mobile'));
+  set('email', get('Email address') || get('Email'));
+  let d = get('Date'), time = get('Meeting time');
   const dt = get('Date & time');
   if (dt) { d = dt; const tm = dt.match(/at\s+(\d{1,2}:\d{2})/); if (tm) time = tm[1]; }
-  if (d) form.d.value = parseEnglishDate(d);
-  if (/^\d{1,2}:\d{2}$/.test(time)) form.h.value = time.padStart(5, '0');
-  const people = get('Number of people') || get('Passengers'); if (parseInt(people)) form.p.value = parseInt(people);
-  const opt = get('Option chosen');
-  // Prefer the longest matching code ("Opt 2 Bis" before "Opt 2")
-  const best = opt ? TOURS.filter(t => opt.toLowerCase().startsWith(t.code.toLowerCase())).sort((a, b) => b.code.length - a.code.length)[0] : null;
+  if (d) set('d', parseEnglishDate(d));
+  if (/^\d{1,2}:\d{2}$/.test(time)) set('h', time.padStart(5, '0'));
+  const people = parseInt(get('Number of people') || get('Passengers'));
+  if (people) set('p', people);
+  set('s', get('Cruise company / ship name').replace(/^-$/, '') || get('Flight/train/ship'));
+  set('x', get('Notes'));
   if (/I need a transfer/i.test(txt)) {
-    form.k.value = 'transfer'; tourSel.value = '';
+    form.k.value = 'transfer';
     const from = get('From'), to = get('To');
-    form.t.value = `Transfer · ${from} → ${to}`; form.u.value = from;
+    set('t', `Transfer · ${from} → ${to}`); set('u', from);
   } else if (/shared tour/i.test(txt)) {
-    form.k.value = 'shared'; tourSel.value = '';
-    form.t.value = get('Tour'); form.u.value = get('Location');
+    form.k.value = 'shared';
+    set('t', get('Tour')); set('u', get('Location'));
   } else {
     form.k.value = 'private';
-    if (best) { tourSel.value = best.id; form.t.value = `${best.code} · ${best.title}`; }
-    form.u.value = get('Location');
+    const opt = get('Option chosen');
+    // Prefer the longest matching code ("Opt 2 Bis" before "Opt 2")
+    const best = opt ? TOURS.filter(t => opt.toLowerCase().startsWith(t.code.toLowerCase())).sort((a, b) => b.code.length - a.code.length)[0] : null;
+    if (best) { tourSel.value = best.id; set('t', `${best.code} · ${best.title}`); } else set('t', opt);
+    set('u', get('Location'));
   }
   const fare = get('Quoted fare').match(/€\s?([\d,.]+)/);
-  delete form.e.dataset.touched;
-  if (fare) form.e.value = fare[1].replace(/[,.]/g, ''); else updatePrice();
-  toast('Dati compilati: controllali');
+  if (fare) set('e', fare[1].replace(/[,.]/g, '')); else updatePrice();
+  renderSummary();
+}
+
+let pasteTimer;
+$('#paste').addEventListener('input', () => {
+  clearTimeout(pasteTimer);
+  pasteTimer = setTimeout(() => { if ($('#paste').value.trim()) { parseRequest($('#paste').value); $('#result').classList.add('hidden'); } }, 350);
+});
+$('#clip').addEventListener('click', async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (!t.trim()) { toast('Gli appunti sono vuoti'); return; }
+    $('#paste').value = t; parseRequest(t); $('#result').classList.add('hidden');
+    toast('Richiesta letta: controlla il riepilogo');
+  } catch { toast('Non riesco a leggere gli appunti: incolla il testo nel riquadro'); }
 });
 
-const fmtLong = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+// ── confirm ───────────────────────────────────────────────────
+const digitsOf = p => (p || '').replace(/[^\d]/g, '');
 
-form.addEventListener('submit', async e => {
-  e.preventDefault();
+async function createConfirmation() {
   const k = loadKey();
   if (!k) { toast('Crea prima la chiave'); return; }
-  const f = Object.fromEntries(new FormData(form));
+  const f = val();
+  const miss = missing(f);
+  if (miss.length) { $('#edit').open = true; toast('Mancano: ' + miss.join(', ')); return; }
+  if (!confirm(`Confermare la prenotazione ${f.c.trim().toUpperCase()} di ${f.n.trim()} (${fmtShort(f.d)})?\n\nIl cliente riceverà il link di conferma.`)) return;
   const data = {
     c: f.c.trim().toUpperCase(), k: f.k, o: f.o || undefined, t: f.t.trim(), d: f.d, h: f.h || undefined,
-    p: +f.p, u: f.u.trim(), e: f.e === '' ? undefined : +f.e, n: f.n.trim(),
+    p: +f.p, u: f.u.trim(), e: f.e === '' ? undefined : +f.e, n: f.n.trim(), s: (f.s || '').trim() || undefined,
   };
   const token = await signConfirmation(k.privateJwk, data);
   const base = CONFIG.appUrl || new URL('index.html', location.href).href.split('#')[0];
   const link = `${base}#/confirm/${token}`;
   const balance = data.k === 'private' && data.e ? data.e - CONFIG.depositAmount : null;
-  const first = data.n.split(/\s+/)[0];
   const lines = [
-    `Ciao ${first}! ✅ Your booking is confirmed.`, '',
+    `Ciao ${data.n.split(/\s+/)[0]}! ✅ Your booking is confirmed.`, '',
     data.t,
     `📅 ${fmtLong(data.d)}${data.h ? ' at ' + data.h : ''}`,
     `👥 ${data.p} guest${data.p > 1 ? 's' : ''} · 📍 ${data.u}`,
@@ -187,16 +249,45 @@ form.addEventListener('submit', async e => {
   lines.push('', 'Open this link to see your confirmed booking and your tour pass in the app:', link,
     '', 'Visiting other ports in Italy or the Mediterranean? Discover TOURISFIED, our network of trusted local drivers: www.tourisfied.com',
     '', `A presto, ${CONFIG.driverName} – ${CONFIG.brand} Team`);
-  const msg = lines.join('\n');
-  $('#msg').value = msg;
-  const digits = (f.phone || '').replace(/[^\d]/g, '');
-  const sendWa = () => { $('#send-wa').href = `https://wa.me/${digits}?text=${encodeURIComponent($('#msg').value)}`; };
-  sendWa();
-  $('#msg').oninput = sendWa;
-  $('#test-link').href = link;
+  const entry = { c: data.c, n: data.n, t: data.t, d: data.d, phone: f.phone || '', email: f.email || '', link, msg: lines.join('\n'), at: Date.now() };
+  saveHistory(entry);
+  showResult(entry);
+}
+
+function showResult(e) {
+  $('#msg').value = e.msg;
+  const wire = () => {
+    const text = encodeURIComponent($('#msg').value);
+    const d = digitsOf(e.phone);
+    // With a full international number the chat opens straight away; otherwise WhatsApp asks for the contact
+    $('#send-wa').href = d.length >= 8 ? `https://wa.me/${d}?text=${text}` : `https://wa.me/?text=${text}`;
+    const mail = $('#send-mail');
+    if (e.email) { mail.href = `mailto:${e.email}?subject=${encodeURIComponent('Booking confirmed – ' + e.c + ' – ' + e.t)}&body=${text}`; mail.classList.remove('hidden'); }
+    else mail.classList.add('hidden');
+  };
+  wire();
+  $('#msg').oninput = wire;
+  $('#test-link').href = e.link;
   $('#result').classList.remove('hidden');
   $('#result').scrollIntoView({ behavior: 'smooth' });
-});
+}
+
+function loadHistory() { try { return JSON.parse(localStorage.getItem(HIST_STORE)) || []; } catch { return []; } }
+function saveHistory(entry) {
+  const h = loadHistory().filter(x => x.c !== entry.c);
+  h.unshift(entry);
+  try { localStorage.setItem(HIST_STORE, JSON.stringify(h.slice(0, 15))); } catch { /* ignore */ }
+  renderHistory();
+}
+function renderHistory() {
+  const h = loadHistory();
+  $('#hist-section').classList.toggle('hidden', !h.length);
+  $('#hist').innerHTML = h.map((x, i) => `<li><span><b>${esc(x.n)}</b><br><span class="muted small">${esc(x.c)} · ${esc(x.t)} · ${fmtShort(x.d)}</span></span><button data-i="${i}" type="button">Reinvia</button></li>`).join('');
+  document.querySelectorAll('#hist button').forEach(b => b.addEventListener('click', () => showResult(loadHistory()[+b.dataset.i])));
+}
+
+$('#confirm').addEventListener('click', createConfirmation);
 $('#copy').addEventListener('click', () => copy($('#msg').value, 'Messaggio copiato'));
 
 renderKey();
+renderHistory();
