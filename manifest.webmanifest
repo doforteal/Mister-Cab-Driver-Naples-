@@ -1,7 +1,7 @@
 {
-  "name": "Mister Cab Club — Taxi Mister Cab Driver Naples",
+  "name": "Taxi Mister Cab Driver Naples",
   "short_name": "Mister Cab",
-  "description": "Private and shared tours, transfers, your trips and rewards with Taxi Mister Cab Driver, Naples.",
+  "description": "Private and shared tours, transfers and your trips with Taxi Mister Cab Driver, Naples.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

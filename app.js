@@ -1,6 +1,6 @@
 /* ============================================================
-   Mister Cab Club — app logic (single-page, hash routing)
-   Member data is stored on this device (localStorage).
+   Mister Cab — app logic (single-page, hash routing)
+   Customer profile and trips are stored on this device (localStorage).
    ============================================================ */
 
 const STORE_KEY = 'mcc_state_v1';
@@ -14,7 +14,6 @@ const uid = (p = '') => p + Math.random().toString(36).slice(2, 8).toUpperCase()
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const parseDate = d => new Date(d + 'T12:00:00');
 const fmtDate = (d, opts = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) => d ? parseDate(d).toLocaleDateString('en-GB', opts) : '';
-const isPast = d => d && d < todayISO();
 const waLink = text => `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(text)}`;
 const mailLink = (subj, body) => `mailto:${CONFIG.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
 
@@ -38,23 +37,14 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 function load() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null; } catch { return null; }
 }
-let S = load() || { profile: null, trips: [], ledger: [], redeemed: [] };
+let S = load() || { profile: null, trips: [] };
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch { toast('Could not save on this device'); }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ profile: S.profile, trips: S.trips })); } catch { toast('Could not save on this device'); }
 }
 
-const points = () => S.ledger.reduce((a, l) => a + l.points, 0);
-const completedTours = () => S.trips.filter(t => t.status === 'completed' && t.kind !== 'transfer').length;
-function tierInfo() {
-  const n = completedTours();
-  const tiers = CONFIG.tiers;
-  let i = 0;
-  tiers.forEach((t, k) => { if (n >= t.minTours) i = k; });
-  const cur = tiers[i], next = tiers[i + 1];
-  const pct = next ? Math.round(((n - cur.minTours) / (next.minTours - cur.minTours)) * 100) : 100;
-  return { cur, next, n, pct, toNext: next ? next.minTours - n : 0 };
-}
 const tourById = id => TOURS.find(t => t.id === id);
+// A trip is "past" when cancelled or once its date has gone by
+const isPastTrip = t => t.status === 'cancelled' || t.date < todayISO();
 
 function qrImg(text, cell = 5) {
   if (typeof qrcode === 'undefined') return `<div class="code-box">${esc(text)}</div>`;
@@ -73,7 +63,6 @@ const routes = {
   transfer: renderTransfer,
   trips: renderTrips,
   trip: renderTrip,
-  rewards: renderRewards,
   account: renderAccount,
 };
 
@@ -93,62 +82,36 @@ window.addEventListener('hashchange', router);
 // ── onboarding ────────────────────────────────────────────────
 function renderWelcome() {
   document.body.classList.add('onboarding');
-  const ref = new URLSearchParams(location.search).get('ref') || '';
   view.innerHTML = `
   <section class="welcome">
     <img class="logo" src="icons/logo.png" alt="" />
-    <h1>Welcome to the<br>${esc(CONFIG.club)}</h1>
-    <p>The app of ${esc(CONFIG.brand)}, Naples. Book private and shared tours, keep every trip in your pocket and earn rewards each time you ride with us.</p>
+    <h1>Welcome to<br>${esc(CONFIG.brand)}</h1>
+    <p>Your private driver in Naples. Book private and shared tours and transfers, and keep every trip in your pocket.</p>
     <ul class="ticks" style="margin-top:16px">
       <li>Private day tours from the Port of Naples</li>
       <li>Shared tours: join a group and pay less</li>
-      <li>Your tour pass, chat with your driver, deposit link</li>
-      <li>Points, member tiers and free experiences</li>
+      <li>Transfers: port, airport, station, hotel</li>
+      <li>Your tour pass, deposit link and chat with your driver</li>
     </ul>
     <form class="card" id="join">
       <label class="f">Full name<input name="name" required autocomplete="name" /></label>
       <label class="f">Email<input name="email" type="email" required autocomplete="email" /></label>
       <label class="f">Mobile / WhatsApp<input name="phone" type="tel" required autocomplete="tel" placeholder="+1 555 123 4567" /></label>
-      <label class="f">Invited by a friend? Code (optional)<input name="ref" value="${esc(ref)}" autocapitalize="characters" /></label>
-      <button class="btn" style="margin-top:18px">Join the club — it’s free</button>
+      <button class="btn" style="margin-top:18px">Get started</button>
       <p class="fine">Your details stay on this phone and are only sent to us when you book.</p>
     </form>
   </section>`;
   $('#join').addEventListener('submit', e => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
-    const first = f.name.trim().split(/\s+/)[0].replace(/[^a-z]/gi, '').toUpperCase().slice(0, 5) || 'GUEST';
-    S.profile = {
-      name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim(),
-      referredBy: f.ref.trim().toUpperCase(),
-      memberId: 'MC' + String(Math.floor(100000 + Math.random() * 900000)),
-      refCode: first + Math.floor(10 + Math.random() * 90),
-      joined: todayISO(),
-    };
-    S.ledger.push({ date: todayISO(), desc: 'Welcome bonus', points: 50 });
+    S.profile = { name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim(), joined: todayISO() };
     save();
     location.hash = '#/home';
     router();
-    toast('Welcome! 50 points added 🎉');
   });
 }
 
-// ── member card ───────────────────────────────────────────────
-function memberCard() {
-  const t = tierInfo();
-  return `
-  <a class="mcard" href="#/rewards" style="display:block">
-    <div class="row">
-      <div><div class="club">${esc(CONFIG.club)}</div><div class="name">${esc(S.profile.name)}</div></div>
-      <span class="tier-pill" style="background:${t.cur.color}">★ ${esc(t.cur.name)}</span>
-    </div>
-    <div class="pts"><b>${points().toLocaleString('en-US')}</b><span>points</span></div>
-    <div class="bar"><i style="width:${t.pct}%"></i></div>
-    <div class="next">${t.next ? `${t.toNext} more tour${t.toNext > 1 ? 's' : ''} to reach <b>${esc(t.next.name)}</b>` : 'You reached our highest tier. Grazie!'}</div>
-    <div class="mid">MEMBER ${esc(S.profile.memberId)}</div>
-  </a>`;
-}
-
+// ── shared bits ───────────────────────────────────────────────
 function tourCard(t, cls = 'tcard') {
   const from = SCALES[t.scale][0].price;
   return `
@@ -160,27 +123,26 @@ function tourCard(t, cls = 'tcard') {
 }
 
 function upcomingTrips() {
-  return S.trips.filter(t => !['completed', 'cancelled'].includes(t.status)).sort((a, b) => a.date.localeCompare(b.date));
+  return S.trips.filter(t => !isPastTrip(t)).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function tripRow(t) {
   const d = parseDate(t.date);
-  const st = statusChip(t);
   return `
   <a class="card trip" href="#/trip/${t.id}" style="display:flex">
     <div class="date"><b>${d.getDate()}</b><span>${d.toLocaleDateString('en-GB', { month: 'short' })}</span></div>
-    <div class="info"><h3>${esc(t.title)}</h3><div class="small muted">${esc(t.people)} guest${t.people > 1 ? 's' : ''} · ${esc(t.pickup || '')}</div><div style="margin-top:6px">${st}</div></div>
+    <div class="info"><h3>${esc(t.title)}</h3><div class="small muted">${esc(t.people)} guest${t.people > 1 ? 's' : ''} · ${esc(t.pickup || '')}</div><div style="margin-top:6px">${statusChip(t)}</div></div>
     <span class="chev muted">›</span>
   </a>`;
 }
 
 function statusChip(t) {
+  if (t.status === 'cancelled') return '<span class="chip grey">Cancelled</span>';
+  if (isPastTrip(t)) return '<span class="chip ok">Completed</span>';
   return {
     requested: '<span class="chip">Request sent</span>',
     deposit: '<span class="chip navy">Deposit paid</span>',
     confirmed: '<span class="chip ok">Confirmed</span>',
-    completed: '<span class="chip ok">Completed</span>',
-    cancelled: '<span class="chip grey">Cancelled</span>',
   }[t.status] || '';
 }
 
@@ -193,25 +155,35 @@ function renderHome() {
   view.innerHTML = `
   <header class="top">
     <div class="brand"><img src="icons/logo.png" alt="" /><div><div class="sub">${hello},</div><h1>${esc(S.profile.name.split(' ')[0])}</h1></div></div>
-    <a class="icon-btn" href="${waLink(`Hello ${CONFIG.driverName}, I am ${S.profile.name} (member ${S.profile.memberId}).`)}" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>
+    <a class="icon-btn" href="${waLink(`Hello ${CONFIG.driverName}, I am ${S.profile.name}.`)}" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>
   </header>
-  ${memberCard()}
+  ${next ? `
+  <a class="mcard" href="#/trip/${next.id}" style="display:block">
+    <div class="row"><div><div class="club">Your next trip</div><div class="name">${esc(next.title)}</div></div>${statusChip(next)}</div>
+    <div class="pts"><b>${parseDate(next.date).getDate()}</b><span>${fmtDate(next.date, { month: 'long', year: 'numeric' })} · ${fmtDate(next.date, { weekday: 'long' })}</span></div>
+    <div class="next" style="margin-top:8px">${esc(next.people)} guest${next.people > 1 ? 's' : ''} · ${esc(next.pickup || '')}${next.time ? ' · ' + esc(next.time) : ''}</div>
+  </a>` : `
+  <div class="mcard">
+    <div class="club">${esc(CONFIG.brand)}</div>
+    <div class="name" style="margin-top:6px">Arriving by cruise ship?</div>
+    <p class="next" style="margin-top:8px;line-height:1.5">We pick you up at the port as soon as you disembark and bring you back with plenty of time before all aboard.</p>
+    <a class="btn" href="#/explore" style="margin-top:16px;position:relative;z-index:1">Find your tour</a>
+  </div>`}
   <div class="quick">
     <a href="#/explore"><span class="qi">🚐</span>Private tour</a>
     <a href="#/explore/shared"><span class="qi">👥</span>Shared tour</a>
     <a href="#/transfer"><span class="qi">🚖</span>Transfer</a>
-    <a href="#/rewards"><span class="qi">🎁</span>Rewards</a>
+    <a href="${waLink(`Hello ${CONFIG.driverName}!`)}" target="_blank" rel="noopener"><span class="qi">💬</span>WhatsApp</a>
   </div>
-  ${next ? `<h2 class="sec">Your next trip <a href="#/trips">All trips</a></h2>${tripRow(next)}` : `
-  <h2 class="sec">Plan your day in Naples</h2>
-  <div class="card"><b>Arriving by cruise ship?</b><p class="small muted" style="margin-top:4px">We pick you up at the port as soon as you disembark and bring you back with plenty of time before all aboard.</p>
-  <a class="btn navy" href="#/explore" style="margin-top:12px">Find your tour</a></div>`}
   <h2 class="sec">Private day tours <a href="#/explore">See all</a></h2>
   <div class="scroller">${featured.map(t => tourCard(t)).join('')}</div>
-  <h2 class="sec">Moments</h2>
-  <div class="scroller">${CONFIG.rewards.slice(0, 4).map(r => `
-    <a class="tcard" href="#/rewards" style="flex-basis:46%"><div class="bd"><div style="font-size:30px">${r.icon}</div><h3 style="margin-top:6px">${esc(r.title)}</h3><div class="from"><b>${r.points}</b> pts</div></div></a>`).join('')}
-  </div>
+  <h2 class="sec">How it works</h2>
+  <div class="card"><ol class="stops">
+    <li><b>Choose your tour</b><div class="small muted">Prices are total per vehicle, up to 8 guests.</div></li>
+    <li><b>Send the request</b><div class="small muted">We check availability and reply on WhatsApp.</div></li>
+    <li><b>Secure your date</b><div class="small muted">€${CONFIG.depositAmount} reservation fee, balance in cash on the day.</div></li>
+    <li><b>Enjoy the day</b><div class="small muted">Show your tour pass to the driver at pick-up.</div></li>
+  </ol></div>
   <h2 class="sec">Other ports in Italy?</h2>
   <a class="card" href="${CONFIG.tourisfied}" target="_blank" rel="noopener" style="display:block"><b>TOURISFIED network</b><p class="small muted" style="margin-top:4px">Trusted local drivers in other cruise ports. Tap to discover.</p></a>`;
 }
@@ -219,18 +191,24 @@ function renderHome() {
 // ── EXPLORE ───────────────────────────────────────────────────
 let sharedCache = null;
 
-function renderExplore(tab = 'private') {
-  view.innerHTML = `
+function exploreHeader(active) {
+  return `
   <header class="top"><div><h1>Explore</h1><div class="sub">Tours & transfers from Naples</div></div></header>
   <div class="seg">
-    <button data-t="private" class="${tab === 'private' ? 'on' : ''}">Private</button>
-    <button data-t="shared" class="${tab === 'shared' ? 'on' : ''}">Shared</button>
-    <button data-t="transfer">Transfers</button>
-  </div>
-  <div id="ex"></div>`;
+    <button data-t="private" class="${active === 'private' ? 'on' : ''}">Private</button>
+    <button data-t="shared" class="${active === 'shared' ? 'on' : ''}">Shared</button>
+    <button data-t="transfer" class="${active === 'transfer' ? 'on' : ''}">Transfers</button>
+  </div>`;
+}
+function bindSeg() {
   view.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
     location.hash = b.dataset.t === 'transfer' ? '#/transfer' : `#/explore/${b.dataset.t}`;
   }));
+}
+
+function renderExplore(tab = 'private') {
+  view.innerHTML = exploreHeader(tab) + '<div id="ex"></div>';
+  bindSeg();
   if (tab === 'shared') renderShared($('#ex'));
   else $('#ex').innerHTML = `
     <p class="small muted" style="margin-bottom:14px">Your own vehicle and driver for the day (about 8 hours). Prices are <b>total per vehicle</b>, not per person, up to 8 guests.</p>
@@ -251,12 +229,13 @@ async function fetchShared() {
 }
 
 function poolingUrl(params) {
-  const p = new URLSearchParams({ ...params, ref: S.profile.refCode });
-  return `${CONFIG.poolingSite}/?${p}#groups`;
+  const p = new URLSearchParams(params);
+  return `${CONFIG.poolingSite}/${p.toString() ? '?' + p : ''}#groups`;
 }
 
 async function renderShared(el) {
-  el.innerHTML = `<p class="small muted" style="margin-bottom:14px">Join a group of travellers and share the van: you pay per person. Live groups from <b>taximrcabpooling.com</b>.</p><div class="card empty"><div class="big">⏳</div><p class="muted">Loading open groups…</p></div>`;
+  const intro = `<p class="small muted" style="margin-bottom:14px">Join a group of travellers and share the van: you pay per person. Live groups from <b>taximrcabpooling.com</b>.</p>`;
+  el.innerHTML = intro + `<div class="card empty"><div class="big">⏳</div><p class="muted">Loading open groups…</p></div>`;
   try {
     const { groups, tours } = await fetchShared();
     const cards = groups.filter(g => g.tours).map(g => {
@@ -276,9 +255,9 @@ async function renderShared(el) {
         </div>
       </div>`;
     }).join('');
-    el.innerHTML = `<p class="small muted" style="margin-bottom:14px">Join a group of travellers and share the van: you pay per person. Live groups from <b>taximrcabpooling.com</b>.</p>
-      ${cards || '<div class="card empty"><div class="big">🗓️</div><p class="muted">No open groups right now. Start one below!</p></div>'}
-      <h2 class="sec">Start a new group</h2>
+    el.innerHTML = intro +
+      (cards || '<div class="card empty"><div class="big">🗓️</div><p class="muted">No open groups right now. Start one below!</p></div>') +
+      `<h2 class="sec">Start a new group</h2>
       ${tours.map(t => `<a class="card" style="display:flex;justify-content:space-between;gap:10px" href="${poolingUrl({ tour: t.id })}" target="_blank" rel="noopener">
         <div><b>${esc(t.name)}</b><div class="small muted">${esc(t.duration || '')}</div></div><div><b>${eur(t.base_price)}</b><div class="small muted">pp</div></div></a>`).join('')}`;
     el.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => addSharedTrip(JSON.parse(b.dataset.add))));
@@ -332,14 +311,13 @@ function renderBook(id) {
   const t = tourById(id);
   if (!t) { location.hash = '#/explore'; return; }
   const p = S.profile;
-  const minDate = todayISO();
   view.innerHTML = `
   <a class="back" href="#/tour/${t.id}">‹ ${esc(t.code)}</a>
   <h1 class="detail-title">Request ${esc(t.title)}</h1>
   <p class="small muted">We check availability and reply on WhatsApp. Nothing is charged now.</p>
   <form id="bk">
     <div class="f2">
-      <label class="f">Date<input name="date" type="date" min="${minDate}" required /></label>
+      <label class="f">Date<input name="date" type="date" min="${todayISO()}" required /></label>
       <label class="f">Guests<select name="people">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option ${n === 2 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     </div>
     <label class="f">Pick-up<select name="pickup">${PICKUPS.map(x => `<option>${x}</option>`).join('')}</select></label>
@@ -369,7 +347,7 @@ function renderBook(id) {
     $('#qnote').textContent = far ? 'Pick-up outside Naples: we will confirm itinerary and fare with you.' : `${f.people} guest${f.people > 1 ? 's' : ''} · balance on the day ${eur(price - CONFIG.depositAmount)} in cash (euros).`;
     const m = f.date ? parseDate(f.date).getMonth() : -1;
     const coast = /Amalfi|Positano|Ravello|Sorrento/.test(t.title);
-    $('#season').innerHTML = coast && (m >= 10 || m <= 2) && m !== -1
+    $('#season').innerHTML = coast && m !== -1 && (m >= 10 || m <= 2)
       ? `<p class="note">❄️ Winter note: from November to March much of the Amalfi Coast is closed. We suggest Amalfi (Duomo di Sant’Andrea) and Sorrento, with a short stop in Positano.</p>` : '';
   };
   form.addEventListener('input', upd); upd();
@@ -393,7 +371,6 @@ function renderBook(id) {
       `- Location: ${f.pickup}`,
       f.notes ? `- Notes: ${f.notes}` : '',
       `- Quoted fare: ${price ? eur(price) + ' total per vehicle' : 'to be confirmed'}`,
-      `- Member: ${S.profile.memberId}${S.profile.referredBy ? ' · referred by ' + S.profile.referredBy : ''}`,
       '', 'I accept the Terms & Conditions.',
     ].filter(Boolean).join('\n');
     const trip = { id: uid('T'), kind: 'private', tourId: t.id, title: `${t.code} · ${t.title}`, date: f.date, people: +f.people,
@@ -418,9 +395,7 @@ function showTerms() {
 // ── TRANSFER ──────────────────────────────────────────────────
 function renderTransfer() {
   const p = S.profile;
-  view.innerHTML = `
-  <header class="top"><div><h1>Explore</h1><div class="sub">Tours & transfers from Naples</div></div></header>
-  <div class="seg"><button data-t="private">Private</button><button data-t="shared">Shared</button><button class="on">Transfers</button></div>
+  view.innerHTML = exploreHeader('transfer') + `
   <p class="small muted" style="margin-bottom:6px">Port, airport, station, hotel, Amalfi Coast, Sorrento, Rome… Tell us where and when: we reply with the fare.</p>
   <form id="tr">
     <label class="f">From<input name="from" required placeholder="e.g. Naples Airport" /></label>
@@ -430,7 +405,7 @@ function renderTransfer() {
     <label class="f">Flight / train / ship (optional)<input name="ref" /></label>
     <button class="btn wa" style="margin-top:16px">Ask for a quote on WhatsApp</button>
   </form>`;
-  view.querySelectorAll('.seg button[data-t]').forEach(b => b.addEventListener('click', () => location.hash = `#/explore/${b.dataset.t}`));
+  bindSeg();
   $('#tr').addEventListener('submit', e => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -438,7 +413,7 @@ function renderTransfer() {
       `- Name: ${p.name}`, `- Mobile: ${p.phone}`, `- Email: ${p.email}`,
       `- From: ${f.from}`, `- To: ${f.to}`, `- Date & time: ${fmtDate(f.date)} at ${f.time}`,
       `- Passengers: ${f.people} · Suitcases: ${f.bags}`, f.ref ? `- Flight/train/ship: ${f.ref}` : '',
-      `- Member: ${p.memberId}`].filter(Boolean).join('\n');
+    ].filter(Boolean).join('\n');
     const trip = { id: uid('T'), kind: 'transfer', title: `Transfer · ${f.from} → ${f.to}`, date: f.date, time: f.time,
       people: +f.people, pickup: f.from, price: null, status: 'requested', createdAt: Date.now() };
     S.trips.push(trip); save();
@@ -450,7 +425,7 @@ function renderTransfer() {
 // ── TRIPS ─────────────────────────────────────────────────────
 function renderTrips() {
   const up = upcomingTrips();
-  const past = S.trips.filter(t => ['completed', 'cancelled'].includes(t.status)).sort((a, b) => b.date.localeCompare(a.date));
+  const past = S.trips.filter(isPastTrip).sort((a, b) => b.date.localeCompare(a.date));
   view.innerHTML = `
   <header class="top"><div><h1>My Trips</h1><div class="sub">Requests, bookings and past tours</div></div></header>
   <h2 class="sec" style="margin-top:6px">Upcoming</h2>
@@ -462,24 +437,25 @@ function renderTrip(id) {
   const t = S.trips.find(x => x.id === id);
   if (!t) { location.hash = '#/trips'; return; }
   const tour = tourById(t.tourId);
-  const order = ['requested', 'deposit', 'completed'];
-  const idx = t.status === 'cancelled' ? -1 : order.indexOf(t.status === 'confirmed' ? 'deposit' : t.status);
-  const isTour = t.kind !== 'transfer';
+  const past = isPastTrip(t);
+  const isPrivate = t.kind === 'private';
+  const secured = ['deposit', 'confirmed'].includes(t.status);
+  const idx = t.status === 'cancelled' ? -1 : past ? 2 : secured ? 1 : 0;
   const hasPompeii = tour && /Pompeii/.test(tour.stops.join(' '));
-  const passText = `MCC|${S.profile.memberId}|${t.id}|${t.date}|${t.people}`;
+  const passText = `MISTERCAB|${t.id}|${S.profile.name}|${t.date}|${t.people}`;
   const balance = t.price ? t.price - CONFIG.depositAmount : null;
 
   let actions = '';
-  if (t.status === 'requested') {
-    actions = isTour && t.kind === 'private' ? `
+  if (!past && t.status === 'requested') {
+    actions = isPrivate ? `
       <div class="card"><b>Secure your date</b>
         <p class="small muted" style="margin-top:4px">Once ${esc(CONFIG.driverName)} confirms availability, pay the €${CONFIG.depositAmount} reservation fee.${balance ? ` The balance of ${eur(balance)} is paid in cash on the day.` : ''}</p>
-        <a class="btn" style="margin-top:12px" target="_blank" rel="noopener" href="${CONFIG.depositLink || waLink(`Hello ${CONFIG.driverName}, could you send me the link for the €${CONFIG.depositAmount} reservation fee? (${t.title}, ${fmtDate(t.date)}, member ${S.profile.memberId})`)}">Pay €${CONFIG.depositAmount} reservation fee</a>
+        <a class="btn" style="margin-top:12px" target="_blank" rel="noopener" href="${CONFIG.depositLink || waLink(`Hello ${CONFIG.driverName}, could you send me the link for the €${CONFIG.depositAmount} reservation fee? (${t.title}, ${fmtDate(t.date)}, ${S.profile.name})`)}">Pay €${CONFIG.depositAmount} reservation fee</a>
         <button class="btn ghost" id="paid">I have paid the fee</button>
       </div>` : `
       <div class="card"><b>Waiting for confirmation</b><p class="small muted" style="margin-top:4px">${esc(CONFIG.driverName)} will reply on WhatsApp.</p><button class="btn ghost" id="paid" style="margin-top:12px">Mark as confirmed</button></div>`;
   }
-  if (['deposit', 'confirmed'].includes(t.status)) {
+  if (!past && secured) {
     actions = `
       <div class="card pass">
         <div class="small muted" style="letter-spacing:.1em;text-transform:uppercase">Tour pass</div>
@@ -488,11 +464,10 @@ function renderTrip(id) {
         <p class="small muted" style="margin-top:10px">Show this to your driver at pick-up.</p>
       </div>
       ${hasPompeii ? `<div class="card"><b>🏛️ Pompeii tickets</b><p class="small muted" style="margin-top:4px">Buy them online about one month before (Pompeii Express, about €26). Want a licensed guide for 2h? €140 — ask ${esc(CONFIG.driverName)}.</p></div>` : ''}
-      <button class="btn navy" id="ics">Add to calendar</button>
-      <button class="btn ghost" id="done">Driver: complete tour & add points</button>`;
+      <button class="btn navy" id="ics">Add to calendar</button>`;
   }
-  if (t.status === 'completed') {
-    actions = `<div class="card"><b>Grazie mille! ❤️</b><p class="small muted" style="margin-top:4px">You earned <b>${t.earned || 0} points</b> with this trip. A short post in your cruise Facebook group helps us a lot: “I booked with Taxi Mister Cab Driver – Naples”.</p></div>
+  if (past && t.status !== 'cancelled') {
+    actions = `<div class="card"><b>Grazie mille! ❤️</b><p class="small muted" style="margin-top:4px">We hope you enjoyed your day. A short post in your cruise Facebook group helps us a lot: “I booked with Taxi Mister Cab Driver – Naples”.</p></div>
       <a class="btn" href="#/explore">Book your next tour</a>`;
   }
 
@@ -501,7 +476,7 @@ function renderTrip(id) {
   <h1 class="detail-title">${esc(t.title)}</h1>
   <p class="small muted">${fmtDate(t.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}${t.time ? ' · ' + esc(t.time) : ''}</p>
   <div style="margin-top:8px">${statusChip(t)}</div>
-  ${idx >= 0 ? `<div class="steps">${['Request sent', isTour && t.kind === 'private' ? 'Deposit paid' : 'Confirmed', 'Completed'].map((s, i) => `<div class="${i <= idx ? 'done' : ''}">${s}</div>`).join('')}</div>` : ''}
+  ${idx >= 0 ? `<div class="steps">${['Request sent', isPrivate ? 'Deposit paid' : 'Confirmed', t.kind === 'transfer' ? 'Done' : 'Tour day'].map((s, i) => `<div class="${i <= idx ? 'done' : ''}">${s}</div>`).join('')}</div>` : ''}
   <div class="card" style="margin-top:14px"><ul class="plain">
     <li><span class="muted">Guests</span><b>${t.people}</b></li>
     <li><span class="muted">Pick-up</span><b style="text-align:right">${esc(t.pickup || '-')}</b></li>
@@ -509,39 +484,14 @@ function renderTrip(id) {
     <li><span class="muted">Total</span><b>${t.price ? eur(t.price) + (t.kind === 'shared' ? '' : ' per vehicle') : 'to be confirmed'}</b></li>
   </ul></div>
   <div style="margin-top:12px">${actions}</div>
-  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${waLink(`Hello ${CONFIG.driverName}, about my trip: ${t.title} on ${fmtDate(t.date)} (member ${S.profile.memberId}).`)}">💬 Chat with ${esc(CONFIG.driverName)}</a>
-  ${['requested', 'deposit', 'confirmed'].includes(t.status) ? '<button class="btn ghost" id="cancel" style="margin-top:10px">Cancel this request</button>' : ''}`;
+  <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${waLink(`Hello ${CONFIG.driverName}, about my trip: ${t.title} on ${fmtDate(t.date)} (${S.profile.name}).`)}">💬 Chat with ${esc(CONFIG.driverName)}</a>
+  ${!past ? '<button class="btn ghost" id="cancel" style="margin-top:10px">Cancel this request</button>' : ''}`;
 
-  $('#paid')?.addEventListener('click', () => { t.status = t.kind === 'private' ? 'deposit' : 'confirmed'; save(); renderTrip(id); toast('Great, your date is secured!'); });
+  $('#paid')?.addEventListener('click', () => { t.status = isPrivate ? 'deposit' : 'confirmed'; save(); renderTrip(id); toast('Great, your date is secured!'); });
   $('#ics')?.addEventListener('click', () => downloadICS(t));
-  $('#done')?.addEventListener('click', () => completeTrip(t));
   $('#cancel')?.addEventListener('click', () => {
     if (!confirm('Cancel this trip in the app? Please also tell your driver on WhatsApp. The €50 reservation fee is non-refundable.')) return;
     t.status = 'cancelled'; save(); renderTrip(id);
-  });
-}
-
-function completeTrip(t) {
-  openSheet(`
-    <h2>Complete tour</h2>
-    <p class="small muted">For the driver: enter the staff PIN to close the tour and credit the points.</p>
-    <form id="pin">
-      <label class="f">Final amount paid (€)<input name="amount" type="number" min="0" step="1" value="${t.price || ''}" required /></label>
-      <label class="f">Staff PIN<input name="pin" type="password" inputmode="numeric" required /></label>
-      <button class="btn" style="margin-top:16px">Complete & add points</button>
-    </form>`);
-  $('#pin').addEventListener('submit', e => {
-    e.preventDefault();
-    const f = Object.fromEntries(new FormData(e.target));
-    if (f.pin !== CONFIG.staffPin) { toast('Wrong PIN'); return; }
-    const tier = tierInfo().cur;
-    const earned = Math.round(+f.amount * CONFIG.pointsPerEuro * (1 + (tier.bonus || 0)));
-    t.status = 'completed'; t.price = +f.amount; t.earned = earned;
-    S.ledger.push({ date: todayISO(), desc: t.title, points: earned });
-    const before = tier.name;
-    save(); closeSheet(); renderTrip(t.id);
-    const after = tierInfo().cur.name;
-    toast(after !== before ? `+${earned} points · Welcome to ${after}! ⭐` : `+${earned} points added`);
   });
 }
 
@@ -549,7 +499,7 @@ function downloadICS(t) {
   const d = t.date.replace(/-/g, '');
   const [hh, mm] = (t.time || '08:00').split(':');
   const endH = String(Math.min(23, +hh + (t.kind === 'transfer' ? 1 : 8))).padStart(2, '0');
-  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Mister Cab Club//EN', 'BEGIN:VEVENT',
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Taxi Mister Cab Driver//EN', 'BEGIN:VEVENT',
     `UID:${t.id}@mistercab`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     `DTSTART;TZID=Europe/Rome:${d}T${hh}${mm}00`, `DTEND;TZID=Europe/Rome:${d}T${endH}${mm}00`,
     `SUMMARY:${t.title} – Taxi Mister Cab Driver`, `LOCATION:${(t.pickup || '').replace(/[,;]/g, ' ')}`,
@@ -560,60 +510,12 @@ function downloadICS(t) {
   a.click();
 }
 
-// ── REWARDS ───────────────────────────────────────────────────
-function renderRewards() {
-  const t = tierInfo();
-  const pts = points();
-  const shareText = `Join me on the Mister Cab Club for tours in Naples & the Amalfi Coast! Use my code ${S.profile.refCode}: ${location.origin}${location.pathname}?ref=${S.profile.refCode}`;
-  view.innerHTML = `
-  <header class="top"><div><h1>Rewards</h1><div class="sub">${esc(CONFIG.club)}</div></div></header>
-  ${memberCard()}
-  <h2 class="sec">Member tiers</h2>
-  <div class="tiers">${CONFIG.tiers.map(x => `<div class="${x.id === t.cur.id ? 'on' : ''}"><i style="background:${x.color}"></i><b>${esc(x.name)}</b><div class="muted">${x.minTours ? x.minTours + '+ tours' : 'Join'}</div></div>`).join('')}</div>
-  <div class="card" style="margin-top:12px"><b>Your ${esc(t.cur.name)} benefits</b><ul class="ticks" style="margin-top:6px">${t.cur.perks.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
-  ${t.next ? `<p class="small muted" style="margin-top:8px">Next: <b>${esc(t.next.name)}</b> — ${t.next.perks.map(esc).join(' · ')}</p>` : ''}</div>
-  <h2 class="sec">Moments — use your points</h2>
-  ${CONFIG.rewards.map(r => `
-    <div class="card reward"><div class="ri">${r.icon}</div><div class="rb"><b>${esc(r.title)}</b><div class="small muted">${esc(r.sub)}</div><div class="small"><b>${r.points}</b> pts</div></div>
-    <button data-r="${r.id}" ${pts < r.points ? 'disabled' : ''}>${pts < r.points ? `${r.points - pts} to go` : 'Redeem'}</button></div>`).join('')}
-  ${S.redeemed.length ? `<h2 class="sec">My vouchers</h2>${S.redeemed.slice().reverse().map(v => `<div class="card"><b>${esc(v.title)}</b><div class="small muted">${fmtDate(v.date)} · show this code to your driver</div><div class="code-box">${esc(v.code)}</div></div>`).join('')}` : ''}
-  <h2 class="sec">Invite friends</h2>
-  <div class="card"><p class="small">Share your code: when a friend books a tour, you get <b>${CONFIG.referralBonus} points</b> (credited by your driver).</p>
-    <div class="code-box">${esc(S.profile.refCode)}</div>
-    <div class="btns2"><button class="btn navy" id="share">Share</button><a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareText)}">WhatsApp</a></div></div>
-  <h2 class="sec">Points history</h2>
-  <div class="card"><ul class="ledger">${S.ledger.slice().reverse().map(l => `<li><span>${esc(l.desc)}<br><span class="small muted">${fmtDate(l.date)}</span></span><span class="${l.points >= 0 ? 'plus' : 'minus'}">${l.points >= 0 ? '+' : ''}${l.points}</span></li>`).join('') || '<li class="muted">No points yet</li>'}</ul></div>
-  <p class="note">1 point for every €1 spent on tours. Tier bonus applies on top. Points have no cash value.</p>`;
-
-  view.querySelectorAll('[data-r]').forEach(b => b.addEventListener('click', () => redeem(b.dataset.r)));
-  $('#share').addEventListener('click', async () => {
-    if (navigator.share) { try { await navigator.share({ title: CONFIG.club, text: shareText }); } catch { /* cancelled */ } }
-    else { try { await navigator.clipboard.writeText(shareText); toast('Invite copied'); } catch { toast(shareText); } }
-  });
-}
-
-function redeem(rid) {
-  const r = CONFIG.rewards.find(x => x.id === rid);
-  if (!r || points() < r.points) return;
-  openSheet(`<h2>${r.icon} ${esc(r.title)}</h2><p class="small muted">${esc(r.sub)}</p>
-    <p style="margin-top:14px">Use <b>${r.points} points</b> for this reward? You will get a voucher code to show your driver.</p>
-    <button class="btn" id="ok" style="margin-top:16px">Redeem ${r.points} points</button>`);
-  $('#ok').addEventListener('click', () => {
-    const code = 'MC-' + uid().slice(0, 6);
-    S.ledger.push({ date: todayISO(), desc: 'Redeemed: ' + r.title, points: -r.points });
-    S.redeemed.push({ id: r.id, title: r.title, code, date: todayISO() });
-    save(); closeSheet(); renderRewards(); toast('Voucher ' + code + ' ready');
-  });
-}
-
 // ── ACCOUNT ───────────────────────────────────────────────────
 function renderAccount() {
   const p = S.profile;
   view.innerHTML = `
-  <header class="top"><div><h1>Account</h1><div class="sub">Member since ${fmtDate(p.joined, { month: 'long', year: 'numeric' })}</div></div></header>
-  <div class="card pass"><div class="small muted" style="letter-spacing:.1em;text-transform:uppercase">Member card</div>
-    <h3 style="margin:4px 0 12px">${esc(p.name)}</h3><div class="qr">${qrImg('MCC|' + p.memberId)}</div><div class="code-box" style="font-size:16px">${esc(p.memberId)}</div></div>
-  <h2 class="sec">Profile</h2>
+  <header class="top"><div><h1>Account</h1><div class="sub">${esc(p.name)}</div></div></header>
+  <h2 class="sec" style="margin-top:6px">Your details</h2>
   <form class="card" id="prof">
     <label class="f" style="margin-top:0">Full name<input name="name" value="${esc(p.name)}" required /></label>
     <label class="f">Email<input name="email" type="email" value="${esc(p.email)}" required /></label>
@@ -632,7 +534,6 @@ function renderAccount() {
   <div class="card rows">
     <button class="rowbtn" id="install"><span>📲 Install the app on your phone</span><span class="chev">›</span></button>
     <button class="rowbtn" id="terms"><span>📄 Terms & Conditions</span><span class="chev">›</span></button>
-    <button class="rowbtn" id="staff"><span>🔑 Driver tools</span><span class="chev">›</span></button>
     <button class="rowbtn" id="reset"><span style="color:var(--terra)">Sign out & delete data on this phone</span><span class="chev">›</span></button>
   </div>
   <p class="note" style="text-align:center;margin-top:20px">${esc(CONFIG.brand)} · Naples, Italy</p>`;
@@ -640,34 +541,16 @@ function renderAccount() {
   $('#prof').addEventListener('submit', e => {
     e.preventDefault();
     Object.assign(S.profile, Object.fromEntries(new FormData(e.target)));
-    save(); toast('Profile saved');
+    save(); toast('Details saved');
   });
   $('#terms').addEventListener('click', showTerms);
   $('#install').addEventListener('click', showInstall);
-  $('#staff').addEventListener('click', staffTools);
   $('#reset').addEventListener('click', () => {
-    if (!confirm('Delete your member card, trips and points from this phone?')) return;
-    localStorage.removeItem(STORE_KEY);
-    S = { profile: null, trips: [], ledger: [], redeemed: [] };
+    if (!confirm('Delete your details and trips from this phone?')) return;
+    try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+    S = { profile: null, trips: [] };
     location.hash = '';
     router();
-  });
-}
-
-function staffTools() {
-  openSheet(`<h2>Driver tools</h2><p class="small muted">Credit bonus points (referral, review, goodwill). Staff PIN required.</p>
-    <form id="bonus">
-      <label class="f">Reason<select name="desc"><option>Friend referral bonus</option><option>Thank you for your review</option><option>Goodwill bonus</option></select></label>
-      <label class="f">Points<input name="points" type="number" value="${CONFIG.referralBonus}" min="1" max="5000" required /></label>
-      <label class="f">Staff PIN<input name="pin" type="password" inputmode="numeric" required /></label>
-      <button class="btn" style="margin-top:16px">Add points</button>
-    </form>`);
-  $('#bonus').addEventListener('submit', e => {
-    e.preventDefault();
-    const f = Object.fromEntries(new FormData(e.target));
-    if (f.pin !== CONFIG.staffPin) { toast('Wrong PIN'); return; }
-    S.ledger.push({ date: todayISO(), desc: f.desc, points: +f.points });
-    save(); closeSheet(); toast(`+${f.points} points added`);
   });
 }
 
@@ -678,7 +561,7 @@ function showInstall() {
   openSheet(`<h2>Install the app</h2>
     <p style="margin-top:10px"><b>iPhone (Safari):</b> tap the Share button <span style="font-size:18px">⬆︎</span>, then <b>Add to Home Screen</b>.</p>
     <p style="margin-top:10px"><b>Android (Chrome):</b> tap the menu ⋮, then <b>Install app</b> or <b>Add to Home screen</b>.</p>
-    <p class="note">The app opens full screen, works offline for your trips and member card.</p>`);
+    <p class="note">The app opens full screen and keeps your trips and tour pass available offline.</p>`);
 }
 
 // ── boot ──────────────────────────────────────────────────────

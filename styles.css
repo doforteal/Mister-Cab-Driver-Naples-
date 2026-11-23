@@ -1,4 +1,4 @@
-/* Mister Cab Club — app styles */
+/* Taxi Mister Cab Driver — app styles */
 :root {
   --navy: #1a2f4a;
   --navy-2: #24406a;
@@ -48,12 +48,9 @@ h2.sec a { font-family: var(--body); font-size: 14px; color: var(--terra); font-
 .mcard .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; position: relative; z-index: 1; }
 .mcard .club { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; opacity: .75; }
 .mcard .name { font-family: var(--head); font-size: 22px; margin-top: 4px; }
-.tier-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 99px; font-size: 13px; font-weight: 700; color: #1c1a16; }
 .mcard .pts { margin-top: 22px; position: relative; z-index: 1; }
 .mcard .pts b { font-size: 34px; font-weight: 700; letter-spacing: -.01em; }
 .mcard .pts span { opacity: .75; margin-left: 6px; }
-.bar { height: 7px; background: rgba(255,255,255,.18); border-radius: 99px; overflow: hidden; margin: 12px 0 8px; }
-.bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--gold), #f0d28a); }
 .mcard .next { font-size: 13px; opacity: .85; position: relative; z-index: 1; }
 .mcard .mid { font-size: 12px; opacity: .6; margin-top: 12px; letter-spacing: .08em; position: relative; z-index: 1; }
 
@@ -67,7 +64,7 @@ h2.sec a { font-family: var(--body); font-size: 14px; color: var(--terra); font-
 .card + .card { margin-top: 12px; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
-.chip { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--terra-lt); color: var(--terra); }
+.chip { display: inline-block; white-space: nowrap; padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--terra-lt); color: var(--terra); }
 .chip.ok { background: #e3efe4; color: var(--sage); }
 .chip.navy { background: #e2e8f0; color: var(--navy); }
 .chip.grey { background: #eee9df; color: var(--muted); }
@@ -145,22 +142,6 @@ label.f input:focus, label.f select:focus, label.f textarea:focus { outline: 2px
 .pass .qr img { width: 180px; height: 180px; image-rendering: pixelated; }
 .empty { text-align: center; padding: 34px 16px; }
 .empty .big { font-size: 40px; }
-
-/* ── rewards ────────────────────────────── */
-.reward { display: flex; gap: 14px; align-items: center; }
-.reward .ri { width: 50px; height: 50px; border-radius: 14px; background: var(--terra-lt); display: grid; place-items: center; font-size: 24px; flex: none; }
-.reward .rb { flex: 1; min-width: 0; }
-.reward button { flex: none; border: 0; border-radius: 99px; padding: 8px 14px; font-weight: 700; font-size: 13px; background: var(--navy); color: #fff; cursor: pointer; }
-.reward button:disabled { background: #ddd5c5; color: var(--muted); cursor: not-allowed; }
-.tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.tiers > div { border-radius: 14px; padding: 10px 6px; text-align: center; border: 1px solid var(--line); background: var(--card); font-size: 12px; }
-.tiers > div.on { border: 2px solid var(--navy); }
-.tiers i { display: block; width: 22px; height: 22px; border-radius: 50%; margin: 0 auto 6px; }
-.ledger li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
-.ledger li:last-child { border-bottom: 0; }
-.ledger .plus { color: var(--sage); font-weight: 700; }
-.ledger .minus { color: var(--terra); font-weight: 700; }
-.code-box { overflow-wrap: anywhere; font-family: ui-monospace, Menlo, monospace; font-size: 22px; font-weight: 700; letter-spacing: .12em; text-align: center; padding: 14px; border: 2px dashed var(--line); border-radius: 14px; margin: 12px 0; }
 
 /* ── list rows ──────────────────────────── */
 .rows a, .rows button.rowbtn { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 2px; border-bottom: 1px solid var(--line); width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; cursor: pointer; font-size: 15px; }
