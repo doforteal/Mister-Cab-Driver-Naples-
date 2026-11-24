@@ -54,11 +54,12 @@ function renderKey() {
     : `<h2 class="sec" style="margin-top:6px">Attiva la chiave</h2>
        <div class="card">
          <div class="warn-box" style="margin-top:0">L'app non conosce ancora questa chiave: i link non funzioneranno finché non la attivi.</div>
-         <p class="small" style="margin-top:10px">Copia la <b>chiave pubblica</b> qui sotto (non è segreta) e incollala in <code>config.js</code> alla voce <code>confirmPublicKey</code>, poi ripubblica il sito. Oppure mandala a Claude.</p>
+         <p class="small" style="margin-top:10px">Se hai già una chiave (backup), caricala con il pulsante <b>"Ho già una chiave"</b> qui sotto. Altrimenti copia la <b>chiave pubblica</b> (non è segreta) e falla inserire in <code>config.js</code> alla voce <code>confirmPublicKey</code>.</p>
          ${keyTools(pub)}
        </div>`;
   $('#copy-pub').addEventListener('click', () => copy(pub, 'Chiave pubblica copiata'));
   $('#backup').addEventListener('click', backupKey);
+  $('#imp-existing').addEventListener('change', importKey);
   $('#form-section').classList.remove('hidden');
 }
 
@@ -67,6 +68,7 @@ function keyTools(pub) {
     <pre class="key">${esc(pub)}</pre>
     <button class="btn navy" id="copy-pub" type="button" style="margin-top:10px">Copia chiave pubblica</button>
     <button class="btn ghost" id="backup" type="button">Scarica backup della chiave segreta</button>
+    <label class="btn ghost" style="margin-top:10px">Ho già una chiave (carica il backup)<input type="file" id="imp-existing" accept="application/json,.json" hidden /></label>
     <p class="note">Tieni il backup in un posto sicuro e non mandarlo a nessuno: serve solo per usare la stessa chiave su un altro telefono.</p>`;
 }
 
@@ -79,6 +81,7 @@ async function generateKey() {
 async function importKey(e) {
   const file = e.target.files[0];
   if (!file) return;
+  if (loadKey() && !confirm('Questo sostituisce la chiave attualmente salvata in questo browser con quella del backup.\n\nContinuare?')) { e.target.value = ''; return; }
   try {
     const k = JSON.parse(await file.text());
     if (!k.privateJwk || !k.privateJwk.d) throw new Error('no key');
