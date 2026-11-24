@@ -34,25 +34,18 @@ L'email parte dall'app di posta del cliente: il cliente deve premere "Invia".
 
 In fondo alla pagina c'è l'elenco delle **ultime conferme** con *Reinvia*, utile se il cliente perde il messaggio.
 
-Il cliente **non può confermarsi da solo**: il link è firmato con una chiave segreta che esiste solo sul telefono di Ciro. Se il link viene modificato anche di un carattere, l'app lo rifiuta.
-
-### Attivazione (una volta sola)
-1. Apri `https://<indirizzo-app>/admin.html` sul telefono di Ciro e premi **Crea la chiave**.
-2. Premi **Copia chiave pubblica** (non è segreta) e incollala in `config.js` alla voce `confirmPublicKey`, poi ripubblica il sito.
-3. Premi **Scarica backup della chiave segreta** e conservalo in un posto sicuro. Non mandarlo a nessuno: serve solo per usare la chiave su un altro telefono (*Ho già una chiave*).
-
-`admin.html` non è collegata dall'app e non è indicizzata dai motori di ricerca. Senza la chiave segreta non può creare link validi.
+Il cliente **non può confermarsi da solo**: il link è firmato con una chiave che si sblocca solo con il codice di accesso di Ciro. Se il link viene modificato anche di un carattere, l'app lo rifiuta.
 
 ## Da configurare (`config.js`)
-- `confirmPublicKey`: la chiave pubblica creata in `admin.html` (vedi sopra)
+- `confirmPublicKey`: la chiave pubblica che corrisponde al caveau `admin-vault.js` (già impostata)
 - `depositLink` (facoltativo): un link SumUp fisso mostrato nelle prenotazioni in attesa. Se resta vuoto, Ciro manda il link a mano.
 - I prezzi dei tour sono in `data.js`
 
 ## Pubblicazione
 L'app è online su **https://taximrcab.pages.dev** (Cloudflare Pages, gratuito). Sono file statici, senza build. Ogni modifica salvata sul branch `ccr-e2b2a702-juxdkc` aggiorna il sito da sola in circa un minuto.
 
-- Pagina admin: https://taximrcab.pages.dev/admin.html — si apre con un **PIN** (nel codice c'è solo la sua impronta cifrata, non il PIN). Il PIN impedisce l'accesso a chi capita sulla pagina; la vera protezione delle conferme è la chiave segreta che sta solo sul telefono di Ciro. Per cambiare il PIN va rigenerata l'impronta in `admin.js`.
-- La chiave di conferma vive nel browser, legata all'indirizzo del sito: se l'indirizzo cambia, in `admin.html` si ricarica con *Ho già una chiave* e il file di backup.
+- Pagina admin: https://taximrcab.pages.dev/admin.html — si apre con **un solo codice di accesso** (formato `XXXX-XXXX-XXXX`), valido da qualsiasi telefono o computer. Nel repository non c'è il codice: c'è solo la chiave di firma **cifrata** (`admin-vault.js`), che si apre nel browser con quel codice. Il codice è nel PDF consegnato a Ciro.
+- Se il codice si perde o va cambiato, si rigenera il caveau cifrato e la chiave pubblica in `config.js` (le conferme già inviate smettono di valere).
 - Un dominio proprio (per esempio un sottodominio di `taximrcabpooling.com`) si può collegare dalle impostazioni del progetto su Cloudflare (*Custom domains*).
 
 Per provarla in locale: `python3 -m http.server` e apri http://localhost:8000.

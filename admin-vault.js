@@ -1,0 +1,2 @@
+/* Encrypted signing key for admin.html. Useless without the access code. */
+const ADMIN_VAULT = {"v":1,"iter":600000,"salt":"t5TmiMDvQDG1SeG4X8fxIQ","iv":"UQAfEjuX3iM1Iuel","ct":"yepV1Mbb77WlNMcdUJF7rPZTC8uk-pCUMZppM7cjg4GOCP8yXif-I15ygoab-yrrXaQvjDKI_Ny0F4JuHiGJnXrLt_KswX5Ff04iZ3a6TFXbZkyeC_UKjz45ZhxenIKDzuma_WJ7o-vEOYn3Pwuu0mVOeWw0ytRh-nFaGB_mhkB0czGc1kFg_uIvjnLT9nOHgwVz4IHMo8lJRaHIuC63GIXbp8uDWCAZLZCnYIvUUYTP8EyIobLKWbQ-IDNWUDpj7srpvOALvd5NHUShIwGYmO0TJmuzKUft3VnEGKRo"};

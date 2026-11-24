@@ -1,9 +1,9 @@
 /* ============================================================
    admin.html — Ciro confirms a booking with one button (signed link)
-   The private key is generated here and stored only in this browser.
+   One access code opens the panel. The signing key is stored encrypted
+   in admin-vault.js and only decrypted in the browser with that code.
    ============================================================ */
 
-const KEY_STORE = 'mcc_admin_signing_key';
 const HIST_STORE = 'mcc_admin_history';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,88 +16,7 @@ function toast(msg) {
   toast._t = setTimeout(() => t.classList.add('hidden'), 2600);
 }
 
-function loadKey() {
-  try { return JSON.parse(localStorage.getItem(KEY_STORE)) || null; } catch { return null; }
-}
-function storeKey(k) {
-  try { localStorage.setItem(KEY_STORE, JSON.stringify(k)); return true; } catch { toast('Impossibile salvare la chiave in questo browser'); return false; }
-}
-const publicPart = jwk => ({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y });
-const sameKey = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.crv === b.crv;
-
-// ── key section ───────────────────────────────────────────────
-function renderKey() {
-  const k = loadKey();
-  const sec = $('#key-section');
-  if (!window.isSecureContext || !crypto.subtle) {
-    sec.innerHTML = `<div class="warn-box">Apri questa pagina dall'indirizzo https del sito: senza https il telefono non permette di firmare i link.</div>`;
-    return;
-  }
-  if (!k) {
-    sec.innerHTML = `
-      <h2 class="sec" style="margin-top:6px">Primo avvio</h2>
-      <div class="card">
-        <p class="small">Crea la <b>chiave di conferma</b>. Resta solo su questo telefono e serve a firmare i link che mandi ai clienti, così nessuno può confermarsi da solo.</p>
-        <button class="btn" id="gen" style="margin-top:12px">Crea la chiave</button>
-        <label class="btn ghost" style="margin-top:10px">Ho già una chiave (backup)<input type="file" id="imp" accept="application/json,.json" hidden /></label>
-      </div>`;
-    $('#gen').addEventListener('click', generateKey);
-    $('#imp').addEventListener('change', importKey);
-    $('#form-section').classList.add('hidden');
-    return;
-  }
-  const pub = JSON.stringify(publicPart(k.privateJwk));
-  const active = sameKey(CONFIG.confirmPublicKey, k.privateJwk);
-  sec.innerHTML = active
-    ? `<div class="ok-box">✅ Chiave attiva: i link che crei qui vengono accettati dall'app.</div>
-       <details style="margin-top:10px"><summary class="small muted">Gestisci chiave</summary>${keyTools(pub)}</details>`
-    : `<h2 class="sec" style="margin-top:6px">Attiva la chiave</h2>
-       <div class="card">
-         <div class="warn-box" style="margin-top:0">L'app non conosce ancora questa chiave: i link non funzioneranno finché non la attivi.</div>
-         <p class="small" style="margin-top:10px">Se hai già una chiave (backup), caricala con il pulsante <b>"Ho già una chiave"</b> qui sotto. Altrimenti copia la <b>chiave pubblica</b> (non è segreta) e falla inserire in <code>config.js</code> alla voce <code>confirmPublicKey</code>.</p>
-         ${keyTools(pub)}
-       </div>`;
-  $('#copy-pub').addEventListener('click', () => copy(pub, 'Chiave pubblica copiata'));
-  $('#backup').addEventListener('click', backupKey);
-  $('#imp-existing').addEventListener('change', importKey);
-  $('#form-section').classList.remove('hidden');
-}
-
-function keyTools(pub) {
-  return `
-    <pre class="key">${esc(pub)}</pre>
-    <button class="btn navy" id="copy-pub" type="button" style="margin-top:10px">Copia chiave pubblica</button>
-    <button class="btn ghost" id="backup" type="button">Scarica backup della chiave segreta</button>
-    <label class="btn ghost" style="margin-top:10px">Ho già una chiave (carica il backup)<input type="file" id="imp-existing" accept="application/json,.json" hidden /></label>
-    <p class="note">Tieni il backup in un posto sicuro e non mandarlo a nessuno: serve solo per usare la stessa chiave su un altro telefono.</p>`;
-}
-
-async function generateKey() {
-  const pair = await crypto.subtle.generateKey(ECDSA_KEY, true, ['sign', 'verify']);
-  const privateJwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
-  if (storeKey({ privateJwk, created: new Date().toISOString() })) { renderKey(); toast('Chiave creata'); }
-}
-
-async function importKey(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (loadKey() && !confirm('Questo sostituisce la chiave attualmente salvata in questo browser con quella del backup.\n\nContinuare?')) { e.target.value = ''; return; }
-  try {
-    const k = JSON.parse(await file.text());
-    if (!k.privateJwk || !k.privateJwk.d) throw new Error('no key');
-    await crypto.subtle.importKey('jwk', k.privateJwk, ECDSA_KEY, false, ['sign']);
-    if (storeKey(k)) { renderKey(); toast('Chiave importata'); }
-  } catch {
-    toast('File non valido');
-  }
-}
-
-function backupKey() {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([localStorage.getItem(KEY_STORE)], { type: 'application/json' }));
-  a.download = 'mistercab-chiave-conferme-SEGRETA.json';
-  a.click();
-}
+let SIGN_KEY = null;      // private signing key (JWK), only in memory after login
 
 async function copy(text, okMsg) {
   try { await navigator.clipboard.writeText(text); toast(okMsg); }
@@ -235,8 +154,7 @@ $('#clip').addEventListener('click', async () => {
 const digitsOf = p => (p || '').replace(/[^\d]/g, '');
 
 async function createConfirmation() {
-  const k = loadKey();
-  if (!k) { toast('Crea prima la chiave'); return; }
+  if (!SIGN_KEY) { toast('Accedi di nuovo con il codice'); return; }
   const f = val();
   const miss = missing(f);
   if (miss.length) { $('#edit').open = true; toast('Mancano: ' + miss.join(', ')); return; }
@@ -245,7 +163,7 @@ async function createConfirmation() {
     c: f.c.trim().toUpperCase(), k: f.k, o: f.o || undefined, t: f.t.trim(), d: f.d, h: f.h || undefined,
     p: +f.p, u: f.u.trim(), e: f.e === '' ? undefined : +f.e, n: f.n.trim(), s: (f.s || '').trim() || undefined,
   };
-  const token = await signConfirmation(k.privateJwk, data);
+  const token = await signConfirmation(SIGN_KEY, data);
   const base = CONFIG.appUrl || new URL('index.html', location.href).href.split('#')[0];
   const link = `${base}#/confirm/${token}`;
   const balance = data.k === 'private' && data.e ? data.e - CONFIG.depositAmount : null;
@@ -300,58 +218,70 @@ function renderHistory() {
 $('#confirm').addEventListener('click', createConfirmation);
 $('#copy').addEventListener('click', () => copy($('#msg').value, 'Messaggio copiato'));
 
-// ── PIN gate ──────────────────────────────────────────────────
-// Only a salted PBKDF2 hash of the PIN is stored here, never the PIN itself.
-// This keeps casual visitors out of the panel; the real protection of the
-// confirmations is the private signing key that only lives on Ciro's phone.
-const PIN_SALT = 'QevAq7nFzCaN2Bl1z3-Biw';
-const PIN_HASH = 'HjEd4GmaUMPbKYY7rBnAr0S5cj-8ZtBtDUYydf8CM7E';
-const PIN_ITER = 150000;
-const UNLOCK_KEY = 'mcc_admin_unlock';
-const UNLOCK_DAYS = 30;
+// ── Login with the access code ────────────────────────────────
+const SESSION_KEY = 'mcc_admin_session';
+const REMEMBER_DAYS = 30;
 
-async function pinHash(pin) {
-  const key = await crypto.subtle.importKey('raw', utf8(pin), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: B64U.dec(PIN_SALT), iterations: PIN_ITER }, key, 256);
-  return B64U.enc(bits);
+// The code is typed in any case, with or without dashes
+const normalizeCode = v => String(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+async function openVault(code) {
+  const b = B64U.dec;
+  const base = await crypto.subtle.importKey('raw', utf8(normalizeCode(code)), 'PBKDF2', false, ['deriveKey']);
+  const aes = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b(ADMIN_VAULT.salt), iterations: ADMIN_VAULT.iter },
+    base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b(ADMIN_VAULT.iv) }, aes, b(ADMIN_VAULT.ct));   // throws if the code is wrong
+  return JSON.parse(new TextDecoder().decode(plain));
 }
-function isUnlocked() {
+
+function savedSession() {
   try {
-    if (sessionStorage.getItem(UNLOCK_KEY) === PIN_HASH.slice(0, 12)) return true;
-    const v = JSON.parse(localStorage.getItem(UNLOCK_KEY) || 'null');
-    return !!v && v.h === PIN_HASH.slice(0, 12) && Date.now() - v.t < UNLOCK_DAYS * 864e5;
-  } catch { return false; }
+    const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
+    const v = JSON.parse(raw || 'null');
+    if (!v || !v.jwk || Date.now() - v.t > REMEMBER_DAYS * 864e5) return null;
+    return v.jwk;
+  } catch { return null; }
 }
+
 function openPanel() {
   $('#gate').classList.add('hidden');
   $('#panel').classList.remove('hidden');
-  renderKey();
+  // Safety check: the app must know the public half of this key
+  const same = SIGN_KEY && CONFIG.confirmPublicKey && SIGN_KEY.x === CONFIG.confirmPublicKey.x && SIGN_KEY.y === CONFIG.confirmPublicKey.y;
+  $('#key-section').innerHTML = same ? '' : '<div class="warn-box">Attenzione: le conferme create qui non verrebbero riconosciute dall\'app. Avvisa chi gestisce l\'app.</div>';
+  $('#form-section').classList.remove('hidden');
   renderHistory();
 }
-let pinFails = 0, pinLockedUntil = 0;
+
+let fails = 0, lockedUntil = 0;
 $('#gate-form').addEventListener('submit', async e => {
   e.preventDefault();
   const msg = $('#gate-msg');
-  if (Date.now() < pinLockedUntil) { msg.textContent = 'Troppi tentativi: riprova tra qualche secondo.'; return; }
-  const ok = (await pinHash($('#pin').value.trim())) === PIN_HASH;
-  if (!ok) {
-    pinFails++;
-    if (pinFails >= 5) { pinLockedUntil = Date.now() + 30000; pinFails = 0; msg.textContent = 'Troppi tentativi: riprova tra 30 secondi.'; }
-    else msg.textContent = 'PIN non corretto.';
+  if (Date.now() < lockedUntil) { msg.textContent = 'Troppi tentativi: riprova tra qualche secondo.'; return; }
+  msg.textContent = 'Controllo…';
+  try {
+    SIGN_KEY = await openVault($('#pin').value);
+  } catch {
+    fails++;
+    if (fails >= 5) { lockedUntil = Date.now() + 30000; fails = 0; msg.textContent = 'Troppi tentativi: riprova tra 30 secondi.'; }
+    else msg.textContent = 'Codice non corretto.';
     $('#pin').value = '';
     return;
   }
   try {
-    sessionStorage.setItem(UNLOCK_KEY, PIN_HASH.slice(0, 12));
-    if ($('#remember').checked) localStorage.setItem(UNLOCK_KEY, JSON.stringify({ h: PIN_HASH.slice(0, 12), t: Date.now() }));
+    const store = $('#remember').checked ? localStorage : sessionStorage;
+    store.setItem(SESSION_KEY, JSON.stringify({ t: Date.now(), jwk: SIGN_KEY }));
   } catch { /* ignore */ }
+  msg.textContent = '';
   openPanel();
 });
 $('#lock').addEventListener('click', () => {
-  try { sessionStorage.removeItem(UNLOCK_KEY); localStorage.removeItem(UNLOCK_KEY); } catch { /* ignore */ }
+  try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
   location.reload();
 });
 
-if (!window.isSecureContext || !crypto.subtle) openPanel();      // renderKey explains the https requirement
-else if (isUnlocked()) openPanel();
+if (!window.isSecureContext || !crypto.subtle) {
+  $('#gate').classList.remove('hidden');
+  $('#gate-msg').textContent = 'Apri la pagina dall\'indirizzo https del sito.';
+} else if ((SIGN_KEY = savedSession())) openPanel();
 else { $('#gate').classList.remove('hidden'); setTimeout(() => $('#pin').focus(), 50); }
