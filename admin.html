@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="styles.css?v=12" />
   <style>
     #view { padding-bottom: 40px; }
     .ok-box { background: #e3efe4; color: #2f5a35; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
@@ -34,6 +34,18 @@
         <div class="brand"><img src="icons/logo.png" alt="" /><div><div class="sub">Solo per Ciro</div><h1>Conferme</h1></div></div>
       </header>
 
+      <section id="gate" class="hidden">
+        <h2 class="sec" style="margin-top:6px">Accesso</h2>
+        <form class="card" id="gate-form" autocomplete="off">
+          <p class="small muted">Inserisci il PIN per aprire il pannello.</p>
+          <label class="f">PIN<input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="off" required /></label>
+          <label class="f" style="display:flex;gap:10px;align-items:center;font-weight:400"><input type="checkbox" id="remember" checked style="width:auto" /> <span>Ricorda su questo telefono per 30 giorni</span></label>
+          <p class="note" id="gate-msg" style="color:var(--terra)"></p>
+          <button class="btn" style="margin-top:12px">Entra</button>
+        </form>
+      </section>
+
+      <div id="panel" class="hidden">
       <section id="key-section"></section>
 
       <section id="form-section" class="hidden">
@@ -101,14 +113,17 @@
         </section>
       </section>
 
+      <button class="btn ghost" id="lock" type="button" style="margin-top:24px">🔒 Blocca il pannello</button>
+      </div>
+
       <p class="note" style="text-align:center;margin-top:24px">Questa pagina non è collegata all'app: aprila solo dal tuo telefono.<br>La chiave segreta resta salvata in questo browser.</p>
     </main>
   </div>
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="config.js?v=11"></script>
-  <script src="data.js?v=11"></script>
-  <script src="confirm.js?v=11"></script>
-  <script src="admin.js?v=11"></script>
+  <script src="config.js?v=12"></script>
+  <script src="data.js?v=12"></script>
+  <script src="confirm.js?v=12"></script>
+  <script src="admin.js?v=12"></script>
 </body>
 </html>

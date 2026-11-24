@@ -1,7 +1,7 @@
 /* Mister Cab — service worker: offline app shell */
-const CACHE = 'mcc-v11';
+const CACHE = 'mcc-v12';
 const SHELL = [
-  './', './index.html', './styles.css?v=11', './config.js?v=11', './data.js?v=11', './confirm.js?v=11', './app.js?v=11',
+  './', './index.html', './styles.css?v=12', './config.js?v=12', './data.js?v=12', './confirm.js?v=12', './app.js?v=12',
   './vendor/qrcode.js', './manifest.webmanifest', './icons/logo.png', './icons/icon-192.png', './icons/icon-512.png',
   './img/amalfi-positano-ravello.jpg', './img/pompei-porta.jpg',
 ];

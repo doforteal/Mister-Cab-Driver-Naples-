@@ -297,5 +297,58 @@ function renderHistory() {
 $('#confirm').addEventListener('click', createConfirmation);
 $('#copy').addEventListener('click', () => copy($('#msg').value, 'Messaggio copiato'));
 
-renderKey();
-renderHistory();
+// ── PIN gate ──────────────────────────────────────────────────
+// Only a salted PBKDF2 hash of the PIN is stored here, never the PIN itself.
+// This keeps casual visitors out of the panel; the real protection of the
+// confirmations is the private signing key that only lives on Ciro's phone.
+const PIN_SALT = 'QevAq7nFzCaN2Bl1z3-Biw';
+const PIN_HASH = 'HjEd4GmaUMPbKYY7rBnAr0S5cj-8ZtBtDUYydf8CM7E';
+const PIN_ITER = 150000;
+const UNLOCK_KEY = 'mcc_admin_unlock';
+const UNLOCK_DAYS = 30;
+
+async function pinHash(pin) {
+  const key = await crypto.subtle.importKey('raw', utf8(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: B64U.dec(PIN_SALT), iterations: PIN_ITER }, key, 256);
+  return B64U.enc(bits);
+}
+function isUnlocked() {
+  try {
+    if (sessionStorage.getItem(UNLOCK_KEY) === PIN_HASH.slice(0, 12)) return true;
+    const v = JSON.parse(localStorage.getItem(UNLOCK_KEY) || 'null');
+    return !!v && v.h === PIN_HASH.slice(0, 12) && Date.now() - v.t < UNLOCK_DAYS * 864e5;
+  } catch { return false; }
+}
+function openPanel() {
+  $('#gate').classList.add('hidden');
+  $('#panel').classList.remove('hidden');
+  renderKey();
+  renderHistory();
+}
+let pinFails = 0, pinLockedUntil = 0;
+$('#gate-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('#gate-msg');
+  if (Date.now() < pinLockedUntil) { msg.textContent = 'Troppi tentativi: riprova tra qualche secondo.'; return; }
+  const ok = (await pinHash($('#pin').value.trim())) === PIN_HASH;
+  if (!ok) {
+    pinFails++;
+    if (pinFails >= 5) { pinLockedUntil = Date.now() + 30000; pinFails = 0; msg.textContent = 'Troppi tentativi: riprova tra 30 secondi.'; }
+    else msg.textContent = 'PIN non corretto.';
+    $('#pin').value = '';
+    return;
+  }
+  try {
+    sessionStorage.setItem(UNLOCK_KEY, PIN_HASH.slice(0, 12));
+    if ($('#remember').checked) localStorage.setItem(UNLOCK_KEY, JSON.stringify({ h: PIN_HASH.slice(0, 12), t: Date.now() }));
+  } catch { /* ignore */ }
+  openPanel();
+});
+$('#lock').addEventListener('click', () => {
+  try { sessionStorage.removeItem(UNLOCK_KEY); localStorage.removeItem(UNLOCK_KEY); } catch { /* ignore */ }
+  location.reload();
+});
+
+if (!window.isSecureContext || !crypto.subtle) openPanel();      // renderKey explains the https requirement
+else if (isUnlocked()) openPanel();
+else { $('#gate').classList.remove('hidden'); setTimeout(() => $('#pin').focus(), 50); }

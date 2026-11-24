@@ -51,7 +51,7 @@ Il cliente **non può confermarsi da solo**: il link è firmato con una chiave s
 ## Pubblicazione
 L'app è online su **https://taximrcab.pages.dev** (Cloudflare Pages, gratuito). Sono file statici, senza build. Ogni modifica salvata sul branch `ccr-e2b2a702-juxdkc` aggiorna il sito da sola in circa un minuto.
 
-- Pagina admin: https://taximrcab.pages.dev/admin.html
+- Pagina admin: https://taximrcab.pages.dev/admin.html — si apre con un **PIN** (nel codice c'è solo la sua impronta cifrata, non il PIN). Il PIN impedisce l'accesso a chi capita sulla pagina; la vera protezione delle conferme è la chiave segreta che sta solo sul telefono di Ciro. Per cambiare il PIN va rigenerata l'impronta in `admin.js`.
 - La chiave di conferma vive nel browser, legata all'indirizzo del sito: se l'indirizzo cambia, in `admin.html` si ricarica con *Ho già una chiave* e il file di backup.
 - Un dominio proprio (per esempio un sottodominio di `taximrcabpooling.com`) si può collegare dalle impostazioni del progetto su Cloudflare (*Custom domains*).
 
