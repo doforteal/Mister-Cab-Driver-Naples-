@@ -75,12 +75,39 @@ const tourById = id => TOURS.find(t => t.id === id);
 const isPastTrip = t => t.status === 'cancelled' || t.date < todayISO();
 const PENDING_CONFIRM_KEY = 'mcc_pending_confirm';
 
-function qrImg(text, cell = 5) {
+// The QR code carries the whole booking as plain text, so any scanner
+// (phone camera) shows what it is about. Plain ASCII keeps every reader happy.
+const asciiText = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[\u00B7\u2013\u2014\u2192]/g, '-').replace(/\u20AC/g, 'EUR').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+  .replace(/[^\x20-\x7E\n]/g, '');
+
+function bookingQrText(t) {
+  const balance = t.kind === 'private' && t.price ? t.price - CONFIG.depositAmount : null;
+  const L = [
+    CONFIG.brand.toUpperCase(),
+    `BOOKING ${t.code} - ${t.status === 'confirmed' ? 'CONFIRMED' : 'PENDING'}`, '',
+    `Tour: ${t.title}`,
+    `Date: ${fmtDate(t.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
+    `Meeting time: ${t.time || '-'}`,
+    `Guests: ${t.people}`,
+    `Pick-up: ${pickupText(t) || '-'}`,
+  ];
+  if (t.ship) L.push(`Ship / flight / train: ${t.ship}`);
+  L.push(`Customer: ${t.name || S.profile.name}`, `Phone: ${S.profile.phone}`);
+  if (t.price) L.push(t.kind === 'private' ? `Total: EUR ${t.price} per vehicle` : `Total: EUR ${t.price}`);
+  if (balance) L.push(`Deposit EUR ${CONFIG.depositAmount} paid, balance EUR ${balance} in cash to the driver`);
+  if (t.notes) L.push(`Notes: ${String(t.notes).slice(0, 120)}`);
+  L.push('', `Driver: ${CONFIG.driverName} ${CONFIG.phoneDisplay}`);
+  return asciiText(L.join('\n'));
+}
+
+function qrImg(text, target = 280) {
   if (typeof qrcode === 'undefined') return `<div class="code-box">${esc(text)}</div>`;
-  const q = qrcode(0, 'M');
+  const q = qrcode(0, 'L');
   q.addData(text);
   q.make();
-  return q.createImgTag(cell, 8, 'QR code');
+  const cell = Math.max(2, Math.floor(target / (q.getModuleCount() + 8)));   // as large as the screen allows
+  return q.createImgTag(cell, cell * 4, 'QR code with the booking details');
 }
 
 // ── router ────────────────────────────────────────────────────
@@ -501,7 +528,7 @@ function renderTrip(id) {
   const confirmed = t.status === 'confirmed';
   const idx = t.status === 'cancelled' ? -1 : confirmed ? (past ? 2 : 1) : 0;
   const hasPompeii = tour && /Pompeii/.test(tour.stops.join(' '));
-  const passText = `MISTERCAB|${t.code}|${t.name || S.profile.name}|${t.date}|${t.people}`;
+  const passText = bookingQrText(t);
   const balance = t.price && t.kind !== 'shared' && t.kind !== 'transfer' ? t.price - CONFIG.depositAmount : null;
 
   let actions = '';
@@ -525,7 +552,7 @@ function renderTrip(id) {
         <div class="small muted" style="letter-spacing:.1em;text-transform:uppercase">Tour pass · ${esc(t.code)}</div>
         <h3 style="margin:4px 0 12px">${esc(t.name || S.profile.name)} · ${t.people} guest${t.people > 1 ? 's' : ''}</h3>
         <div class="qr">${qrImg(passText)}</div>
-        <p class="small muted" style="margin-top:10px">Show this to your driver at pick-up.</p>
+        <p class="small muted" style="margin-top:10px">Show this to your driver at pick-up. Scanning it shows all the booking details.</p>
       </div>
       ${hasPompeii ? `<div class="card"><b>Pompeii tickets</b><p class="small muted" style="margin-top:4px">Buy them online about one month before (Pompeii Express, about €26). Want a licensed guide for 2h? €140 — ask ${esc(CONFIG.driverName)}.</p></div>` : ''}
       <div class="btns2">
