@@ -120,6 +120,7 @@ const routes = {
   trips: renderTrips,
   trip: renderTrip,
   confirm: renderConfirm,
+  c: renderConfirmCompact,
   account: renderAccount,
 };
 
@@ -127,7 +128,7 @@ function router() {
   closeSheet();
   if (!S.profile) {
     // Keep a confirmation link opened before sign-up, and apply it right after
-    const m = location.hash.match(/^#\/confirm\/(.+)$/);
+    const m = location.hash.match(/^#\/((?:confirm|c)\/.+)$/);
     if (m) { try { sessionStorage.setItem(PENDING_CONFIRM_KEY, m[1]); } catch { /* ignore */ } }
     renderWelcome();
     return;
@@ -171,7 +172,7 @@ function renderWelcome() {
     save();
     let pending = null;
     try { pending = sessionStorage.getItem(PENDING_CONFIRM_KEY); sessionStorage.removeItem(PENDING_CONFIRM_KEY); } catch { /* ignore */ }
-    location.hash = pending ? '#/confirm/' + pending : '#/home';
+    location.hash = pending ? '#/' + pending : '#/home';
     router();
   });
 }
@@ -599,9 +600,12 @@ function renderTrip(id) {
 }
 
 // ── CONFIRMATION LINK (sent by Ciro) ──────────────────────────
-async function renderConfirm(token) {
+async function renderConfirm(token) { return handleConfirm(token, verifyConfirmation); }       // long links (first version)
+async function renderConfirmCompact(token) { return handleConfirm(token, verifyCompact); }  // short links
+
+async function handleConfirm(token, verify) {
   view.innerHTML = `<div class="card empty" style="margin-top:40px"><div class="big">🔐</div><p class="muted">Checking your confirmation…</p></div>`;
-  const res = await verifyConfirmation(token, CONFIG.confirmPublicKey);
+  const res = await verify(token, CONFIG.confirmPublicKey);
   if (!res.ok) {
     view.innerHTML = `
     <header class="top"><div><h1>Confirmation</h1></div></header>
@@ -620,8 +624,8 @@ async function renderConfirm(token) {
   }
   // The confirmed details (as agreed with Ciro) replace what was requested
   Object.assign(t, {
-    kind: d.k || t.kind || 'private', tourId: d.o || t.tourId, title: d.t || t.title, date: d.d || t.date,
-    time: d.h || t.time || '', people: d.p || t.people || 1, pickup: d.u || t.pickup || '', price: d.e ?? t.price ?? null,
+    kind: d.k || t.kind || 'private', tourId: d.o || t.tourId, title: d.t || t.title || 'Confirmed booking', date: d.d || t.date,
+    time: d.h || t.time || '', people: d.p || t.people || 1, pickup: d.u || t.pickup || '', pickupDetail: d.u ? '' : (t.pickupDetail || ''), price: d.e ?? t.price ?? null,
     name: d.n || t.name, ship: d.s || t.ship || '', status: 'confirmed', confirmedAt: Date.now(), proof: token,
   });
   save();

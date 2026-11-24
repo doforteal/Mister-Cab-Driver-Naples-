@@ -274,7 +274,7 @@ function afterParse() {
   const ex = code && getBooking(code);
   if (ex) { openBooking(code); toast('Era già in agenda: ' + ST[ex.status][0]); return; }
   if (v.c && v.d && v.n && v.t) {
-    const rec = upsertBooking(recordFromForm('pending'));
+    const rec = upsertBooking({ ...recordFromForm('pending'), orig: { t: v.t.trim(), n: v.n.trim(), u: v.u.trim(), s: (v.s || '').trim() } });
     currentCode = rec.c;
     refreshEditorUI();
     toast('Salvata in agenda: da confermare');
@@ -338,9 +338,21 @@ async function createConfirmation() {
     c: f.c.trim().toUpperCase(), k: f.k, o: f.o || undefined, t: f.t.trim(), d: f.d, h: f.h || undefined,
     p: +f.p, u: f.u.trim(), e: f.e === '' ? undefined : +f.e, n: f.n.trim(), s: (f.s || '').trim() || undefined,
   };
-  const token = await signConfirmation(SIGN_KEY, data);
-  const base = CONFIG.appUrl || new URL('index.html', location.href).href.split('#')[0];
-  const link = `${base}#/confirm/${token}`;
+  // Short link: text fields travel only when they differ from what the customer sent
+  const b0 = currentCode ? getBooking(currentCode) : null;
+  const orig = b0 && b0.orig;
+  const tourDef = TOURS.find(t => t.id === data.o);
+  const defTitle = tourDef ? `${tourDef.code} · ${tourDef.title}` : null;
+  const cur = { t: data.t, n: data.n, u: data.u, s: data.s || '' };
+  let mask = 0;
+  TEXT_FIELDS.forEach(([k, bit]) => {
+    const same = k === 't' && defTitle ? cur.t === defTitle : !!orig && (orig[k] || '') === cur[k];
+    if (!same) mask |= bit;
+  });
+  let token = await signCompact(SIGN_KEY, data, mask), path = 'c';
+  if (!token) { token = await signConfirmation(SIGN_KEY, data); path = 'confirm'; }       // unusual code or value: long format
+  const base = CONFIG.appUrl || new URL('./', location.href).href.split('#')[0];
+  const link = `${base}#/${path}/${token}`;
   const balance = data.k === 'private' && data.e ? data.e - CONFIG.depositAmount : null;
   const first = data.n.split(/\s+/)[0];
   const lines = [

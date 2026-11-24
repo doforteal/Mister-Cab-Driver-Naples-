@@ -38,6 +38,8 @@ L'email parte dall'app di posta del cliente: il cliente deve premere "Invia".
 - Per una prenotazione già confermata il pulsante diventa **Aggiorna e reinvia la conferma**: crea un link nuovo (utile se il cliente lo perde, o se i dati sono cambiati). Annullare o modificare **non avvisa il cliente**: lo si scrive a mano.
 - L'agenda è salvata **sul telefono (o computer) dove si usa il pannello**, non in rete. Sotto *Strumenti* c'è una copia di sicurezza facoltativa (scarica/carica un file). Per un'agenda condivisa tra più dispositivi serve un archivio online (prossimo passo possibile).
 
+Il link di conferma è **corto** (circa 140 caratteri, `.../#/c/...`): contiene solo i dati essenziali in forma compatta (codice, data, ora, persone, prezzo, tour). Nome, ritiro, nave/volo e titolo viaggiano nel link **solo se sono diversi** da quanto aveva scritto il cliente (o se la prenotazione è stata inserita a mano), così le correzioni di Ciro arrivano comunque al cliente. I vecchi link lunghi (`.../#/confirm/...`) funzionano ancora. Una parte fissa di circa 86 caratteri è la firma digitale e non si può accorciare senza un archivio online.
+
 Il cliente **non può confermarsi da solo**: il link è firmato con una chiave che si sblocca solo con il codice di accesso di Ciro. Se il link viene modificato anche di un carattere, l'app lo rifiuta.
 
 ## Da configurare (`config.js`)
