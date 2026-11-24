@@ -641,7 +641,7 @@ async function handleConfirm(token, verify) {
 // Everything the customer needs on the day, in one event.
 function calendarInfo(t) {
   const tour = tourById(t.tourId);
-  const time = t.time || CONFIG.defaultStart;
+  const time = t.time || (t.kind === 'private' ? CONFIG.defaultStart : '08:00');
   const hours = t.kind === 'transfer' ? 1 : 8;
   const [y, mo, d] = t.date.split('-').map(Number);
   const [hh, mm] = time.split(':').map(Number);
@@ -654,7 +654,8 @@ function calendarInfo(t) {
   L.push(`Status: ${t.status === 'confirmed' ? 'CONFIRMED' : 'PENDING'}`);
   L.push('');
   L.push(`Date: ${fmtDate(t.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`);
-  L.push(`Meeting time: ${time} (the final time is confirmed a few days before the tour)`);
+  if (t.kind === 'private') L.push(`Meeting time: ${time} (the final time is confirmed a few days before the tour)`);
+  else L.push(`${t.kind === 'transfer' ? 'Pick-up time' : 'Meeting time'}: ${time}`);
   L.push(`Guests: ${t.people}`);
   L.push(`Pick-up: ${pickupText(t) || '-'}`);
   if (t.ship) L.push(`Ship / flight / train: ${t.ship}`);

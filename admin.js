@@ -119,6 +119,12 @@ function updatePrice() {
 form.e.addEventListener('input', () => { form.e.dataset.touched = '1'; });
 form.p.addEventListener('input', updatePrice);
 form.addEventListener('input', renderSummary);
+// The recommended 7:30 is for tours only: a transfer keeps the time the customer chose
+form.k.addEventListener('change', () => {
+  if (form.k.value === 'transfer' && form.h.value === CONFIG.defaultStart && !currentCode) form.h.value = '';
+  else if (form.k.value === 'private' && !form.h.value && !currentCode) form.h.value = CONFIG.defaultStart;
+  renderSummary();
+});
 
 // What must be there before the booking can be saved or confirmed
 const REQUIRED = [['c', 'codice prenotazione'], ['t', 'titolo'], ['d', 'data'], ['p', 'persone'], ['u', 'punto di ritiro'], ['n', 'nome cliente']];
@@ -367,7 +373,7 @@ async function createConfirmation() {
     ...(data.s ? [`Ship / flight / train: ${data.s}`] : []),
     `Booking code: ${data.c}`,
   ];
-  if (data.h) lines.push('', 'The final meeting time will be confirmed a few days before the tour.');
+  if (data.h && data.k === 'private') lines.push('', 'The final meeting time will be confirmed a few days before the tour.');   // transfers keep the time chosen by the customer
   if (balance) lines.push('', `Thank you for the reservation fee. The balance of EUR ${balance} is to be paid in cash directly to the driver on the day of the tour.`);
   lines.push('', 'You can view your confirmed booking and your tour pass in the app:', link,
     '', 'Travelling to other ports in Italy or the Mediterranean? Discover our network of trusted local drivers: www.tourisfied.com',
