@@ -65,5 +65,6 @@ const TOURS = [
 const TERMS = [
   ['Reservation fee', 'To secure your date, a non-refundable reservation fee of €50 is required at the time of booking. Once everything is confirmed, we send you the payment link.'],
   ['Final payment', 'The balance is due on the day of the tour and is paid in cash (euros) directly to the driver.'],
+  ['Meeting time', 'The recommended start time is 7:30 am. It can be changed, but we suggest doing so only if your ship arrives later. The final meeting time is confirmed a few days before the tour.'],
   ['General conditions', 'We reserve the right to adjust the itinerary in case of unforeseen circumstances. Timings are indicative: tours usually last about 8 hours and are planned around your ship’s schedule. Food, entrance tickets and guided tours are not included unless stated. Guests are responsible for their own travel documents. We are not liable for loss, damage or theft of personal belongings, or for injuries or accidents during the tour.'],
 ];

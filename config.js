@@ -14,6 +14,9 @@ const CONFIG = {
   email: 'mrcabdrivernapoli@gmail.com',
   driverName: 'Ciro',
 
+  // Recommended start time of the private tours (customers may change it; final time is confirmed days before)
+  defaultStart: '07:30',
+
   // Reservation fee (pre-trip fee). The payment link is normally sent by
   // Ciro on WhatsApp. Optional: a fixed SumUp link shown in the app too.
   depositAmount: 50,

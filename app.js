@@ -373,7 +373,7 @@ function renderTour(id) {
   <p class="small muted">About 8 hours · pick-up at the Port of Naples, station, airport, hotel or B&B${t.note ? '<br>' + esc(t.note) : ''}</p>
   <h2 class="sec">Your day</h2>
   <ol class="stops">${t.stops.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
-  <p class="note">About one hour of free time at each stop (Pompeii about 2 hours). We plan the day around your ship and bring you back with a good margin before all aboard.</p>
+  <p class="note">Recommended start time: 7:30 am (the final time is confirmed a few days before the tour). About one hour of free time at each stop (Pompeii about 2 hours). We plan the day around your ship and bring you back with a good margin before all aboard.</p>
   <h2 class="sec">Price per vehicle</h2>
   <div class="card"><ul class="plain">${scaleRows(t.scale).map(r => `<li><span>${r.label} guests</span><b>${eur(r.price)}</b></li>`).join('')}</ul></div>
   <h2 class="sec">Not included</h2>
@@ -400,7 +400,8 @@ function renderBook(id) {
     <label class="f">Pick-up<select name="pickup">${PICKUPS.map(x => `<option>${x}</option>`).join('')}</select></label>
     <label class="f"><span id="pd-label">Terminal / extra details (optional)</span><input name="pickupdetail" id="pd" placeholder="Hotel name and address, station, terminal…" /></label>
     <label class="f">Ship, flight or train (name or number)<input name="ship" placeholder="e.g. MSC Seashore · flight AZ1234 · train FR9620" /></label>
-    <label class="f">Meeting time<input name="time" type="time" value="08:00" /></label>
+    <label class="f">Meeting time<input name="time" type="time" value="${CONFIG.defaultStart}" /></label>
+    <p class="note" style="margin-top:6px">Recommended start time: <b>7:30 am</b>. You can change it, but we suggest doing so only if your ship arrives later. The final meeting time will be confirmed a few days before the tour.</p>
     <label class="f">Wishes (lunch, kids, mobility…)<textarea name="notes" rows="2"></textarea></label>
     <div class="f2">
       <label class="f">Name<input name="name" value="${esc(p.name)}" required /></label>
@@ -449,6 +450,7 @@ function renderBook(id) {
       `- Option chosen: ${t.code} – ${t.title}`,
       `- Ship / flight / train number: ${f.ship || '-'}`,
       `- Meeting time: ${f.time || 'as soon as we disembark'}`,
+      f.time && f.time !== CONFIG.defaultStart ? `- Start time changed from the recommended ${CONFIG.defaultStart}` : '',
       `- Location: ${f.pickup}`,
       f.pickupdetail ? `- Pick-up details: ${f.pickupdetail}` : '',
       f.notes ? `- Notes: ${f.notes}` : '',
@@ -586,6 +588,7 @@ function renderTrip(id) {
     <li><span class="muted">Total</span><b>${t.price ? eur(t.price) + (t.kind === 'private' ? ' per vehicle' : '') : 'to be confirmed'}</b></li>
     ${confirmed && balance ? `<li><span class="muted">Balance on the day</span><b>${eur(balance)} in cash</b></li>` : ''}
   </ul></div>
+  ${!past && t.status !== 'cancelled' && t.kind === 'private' ? '<p class="note">The final meeting time will be confirmed a few days before the tour.</p>' : ''}
   <div style="margin-top:12px">${actions}</div>
   <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${chatLink('I have a question about my booking.', [`- Booking code: ${t.code}`, `- Booking: ${t.title}`, `- Date: ${fmtDate(t.date)}${t.time ? ' at ' + t.time : ''}`,
     `- Number of people: ${t.people}`, `- Location: ${t.pickup || '-'}`, t.pickupDetail ? `- Pick-up details: ${t.pickupDetail}` : '',
@@ -638,7 +641,7 @@ async function handleConfirm(token, verify) {
 // Everything the customer needs on the day, in one event.
 function calendarInfo(t) {
   const tour = tourById(t.tourId);
-  const time = t.time || '08:00';
+  const time = t.time || CONFIG.defaultStart;
   const hours = t.kind === 'transfer' ? 1 : 8;
   const [y, mo, d] = t.date.split('-').map(Number);
   const [hh, mm] = time.split(':').map(Number);
@@ -651,7 +654,7 @@ function calendarInfo(t) {
   L.push(`Status: ${t.status === 'confirmed' ? 'CONFIRMED' : 'PENDING'}`);
   L.push('');
   L.push(`Date: ${fmtDate(t.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`);
-  L.push(`Meeting time: ${time}`);
+  L.push(`Meeting time: ${time} (the final time is confirmed a few days before the tour)`);
   L.push(`Guests: ${t.people}`);
   L.push(`Pick-up: ${pickupText(t) || '-'}`);
   if (t.ship) L.push(`Ship / flight / train: ${t.ship}`);

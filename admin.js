@@ -207,6 +207,7 @@ function openBooking(code) {
 $('#manual').addEventListener('click', () => {
   startNew();
   form.c.value = makeBookingCode();
+  form.h.value = CONFIG.defaultStart;
   $('#edit').open = true;
   renderSummary();
   $('#summary').scrollIntoView({ behavior: 'smooth' });
@@ -366,6 +367,7 @@ async function createConfirmation() {
     ...(data.s ? [`Ship / flight / train: ${data.s}`] : []),
     `Booking code: ${data.c}`,
   ];
+  if (data.h) lines.push('', 'The final meeting time will be confirmed a few days before the tour.');
   if (balance) lines.push('', `Thank you for the reservation fee. The balance of EUR ${balance} is to be paid in cash directly to the driver on the day of the tour.`);
   lines.push('', 'You can view your confirmed booking and your tour pass in the app:', link,
     '', 'Travelling to other ports in Italy or the Mediterranean? Discover our network of trusted local drivers: www.tourisfied.com',
