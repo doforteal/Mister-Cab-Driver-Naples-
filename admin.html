@@ -10,28 +10,60 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=15" />
   <style>
     #view { padding-bottom: 40px; }
     .ok-box { background: #e3efe4; color: #2f5a35; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
     .warn-box { background: var(--terra-lt); color: #8a3a1c; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
-    pre.key { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-top: 8px; max-height: 160px; overflow: auto; }
     textarea.out { font-size: 14px; }
     #summary-body li b.miss { color: var(--terra); }
     #summary-body li span.v { text-align: right; font-weight: 600; word-break: break-word; }
     details.edit { margin-top: 12px; }
     details.edit > summary { cursor: pointer; font-weight: 600; color: var(--navy); padding: 10px 2px; }
     .btn.big { padding: 18px; font-size: 17px; background: var(--sage); }
-    .hist li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; list-style: none; }
-    .hist li:last-child { border-bottom: 0; }
-    .hist button { border: 1px solid var(--line); background: var(--card); border-radius: 99px; padding: 6px 12px; font-weight: 600; font-size: 13px; cursor: pointer; flex: none; }
+
+    /* tabs */
+    .atabs { display: flex; background: #ebe4d6; border-radius: 99px; padding: 4px; margin: 4px 0 14px; }
+    .atabs button { flex: 1; border: 0; background: none; padding: 10px 6px; border-radius: 99px; font-weight: 700; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+    .atabs button.on { background: var(--card); color: var(--navy); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .badge { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 99px; background: var(--terra); color: #fff; font-size: 12px; margin-left: 4px; }
+    .badge:empty { display: none; }
+
+    /* agenda */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+    .chipbtn { border: 1px solid var(--line); background: var(--card); border-radius: 99px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .chipbtn.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .dayh { margin: 16px 0 6px; font-weight: 700; font-size: 14px; color: var(--navy); text-transform: capitalize; }
+    .brow { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+    .brow.past { opacity: .6; }
+    .brow.cancelled .binfo b { text-decoration: line-through; }
+    .brow .bt { flex: none; width: 52px; text-align: center; background: var(--navy); color: #fff; border-radius: 12px; padding: 6px 0; }
+    .brow .bt b { display: block; font-size: 18px; line-height: 1.1; }
+    .brow .bt span { font-size: 11px; text-transform: uppercase; }
+    .brow .binfo { flex: 1; min-width: 0; font-size: 14px; }
+    .brow .binfo b { display: block; font-size: 14px; }
+    .calnav { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 10px; }
+    .calnav b { text-transform: capitalize; font-size: 16px; }
+    .calnav button { border: 1px solid var(--line); background: var(--card); border-radius: 99px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+    .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal .wd { text-align: center; font-size: 11px; color: var(--muted); font-weight: 700; padding-bottom: 2px; }
+    .cal button { aspect-ratio: 1; border: 1px solid var(--line); background: var(--card); border-radius: 10px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 14px; padding: 0; }
+    .cal button.empty { visibility: hidden; }
+    .cal button.today { border-color: var(--terra); border-width: 2px; }
+    .cal button.sel { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .dots { display: flex; gap: 3px; height: 6px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .dot.p { background: var(--terra); } .dot.c { background: var(--sage); }
+    .cal button.sel .dot.c { background: #9fd6a8; }
+    .legend { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+    .legend .dot { display: inline-block; margin: 0 4px 0 8px; }
   </style>
 </head>
 <body>
   <div id="app">
     <main id="view">
       <header class="top">
-        <div class="brand"><img src="icons/logo.png" alt="" /><div><div class="sub">Solo per Ciro</div><h1>Conferme</h1></div></div>
+        <div class="brand"><img src="icons/logo.png" alt="" /><div><div class="sub">Solo per Ciro</div><h1>Prenotazioni</h1></div></div>
       </header>
 
       <section id="gate" class="hidden">
@@ -46,74 +78,108 @@
       </section>
 
       <div id="panel" class="hidden">
-      <section id="key-section"></section>
+        <section id="key-section"></section>
 
-      <section id="form-section" class="hidden">
-        <h2 class="sec" style="margin-top:6px">1. Incolla la richiesta</h2>
-        <div class="card">
-          <p class="small muted">Copia il messaggio WhatsApp o l’email del cliente e incollalo qui: i dati si compilano da soli.</p>
-          <textarea id="paste" rows="4" style="width:100%;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;font-size:16px" placeholder="Hello Ciro, I would like to book a private tour. - Booking code: MC-…"></textarea>
-          <button class="btn ghost" id="clip" type="button" style="margin-top:10px">📋 Incolla dagli appunti</button>
-        </div>
+        <section id="form-section" class="hidden">
+          <nav class="atabs" id="tabs">
+            <button type="button" data-v="new" class="on">➕ Richiesta</button>
+            <button type="button" data-v="agenda">📅 Agenda <span class="badge" id="badge"></span></button>
+          </nav>
 
-        <section id="summary" class="hidden">
-          <h2 class="sec">2. Controlla</h2>
-          <div class="card"><ul class="plain" id="summary-body"></ul></div>
-          <div id="miss-box"></div>
+          <!-- ───────── RICHIESTA / MODIFICA ───────── -->
+          <section id="view-new">
+            <div id="edit-banner" class="card hidden">
+              <div id="edit-banner-text"></div>
+              <div class="btns2" style="margin-top:10px">
+                <button class="btn ghost" id="back-b" type="button">← Agenda</button>
+                <button class="btn ghost" id="new-b" type="button">➕ Nuova richiesta</button>
+              </div>
+            </div>
 
-          <details class="edit" id="edit">
-            <summary>✏️ Correggi o completa i dati</summary>
-            <form class="card" id="cf">
-              <div class="f2">
-                <label class="f" style="margin-top:0">Codice prenotazione<input name="c" /></label>
-                <label class="f" style="margin-top:0">Tipo<select name="k">
-                  <option value="private">Tour privato</option><option value="shared">Tour condiviso</option><option value="transfer">Transfer</option>
-                </select></label>
+            <div id="paste-card">
+              <h2 class="sec" style="margin-top:6px">1. Incolla la richiesta</h2>
+              <div class="card">
+                <p class="small muted">Copia il messaggio WhatsApp o l’email del cliente e incollalo qui: i dati si compilano da soli e la richiesta va in agenda.</p>
+                <textarea id="paste" rows="4" style="width:100%;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;font-size:16px" placeholder="Hello Ciro, I would like to book a private tour. - Booking code: MC-…"></textarea>
+                <button class="btn ghost" id="clip" type="button" style="margin-top:10px">📋 Incolla dagli appunti</button>
+                <button class="btn ghost" id="manual" type="button">✍️ Inserisci a mano (richiesta telefonica)</button>
               </div>
-              <label class="f">Tour<select name="o" id="tour-sel"></select></label>
-              <label class="f">Titolo mostrato al cliente<input name="t" /></label>
-              <div class="f2">
-                <label class="f">Data<input name="d" type="date" /></label>
-                <label class="f">Ora<input name="h" type="time" /></label>
-              </div>
-              <div class="f2">
-                <label class="f">Persone<input name="p" type="number" min="1" max="60" value="2" /></label>
-                <label class="f">Totale (€)<input name="e" type="number" min="0" step="1" /></label>
-              </div>
-              <label class="f">Punto di ritiro<input name="u" /></label>
-              <label class="f">Nave / volo / treno<input name="s" /></label>
-              <label class="f">Nome cliente<input name="n" /></label>
-              <div class="f2">
-                <label class="f">WhatsApp cliente<input name="phone" type="tel" placeholder="+1 555 123 4567" /></label>
-                <label class="f">Email cliente<input name="email" type="email" /></label>
-              </div>
-              <label class="f">Note del cliente<textarea name="x" rows="2"></textarea></label>
-            </form>
-          </details>
+            </div>
 
-          <h2 class="sec">3. Quando hai finito tutto</h2>
-          <button class="btn big" id="confirm" type="button">✅ Prenotazione completata – Conferma</button>
-          <p class="note">Premilo solo dopo aver completato tutto fuori dall’app (pagamento, accordi col cliente). Poi invii al cliente il messaggio con il link di conferma.</p>
+            <section id="summary" class="hidden">
+              <h2 class="sec">2. Controlla</h2>
+              <div class="card"><ul class="plain" id="summary-body"></ul></div>
+              <div id="miss-box"></div>
+
+              <details class="edit" id="edit">
+                <summary>✏️ Correggi o completa i dati</summary>
+                <form class="card" id="cf">
+                  <div class="f2">
+                    <label class="f" style="margin-top:0">Codice prenotazione<input name="c" /></label>
+                    <label class="f" style="margin-top:0">Tipo<select name="k">
+                      <option value="private">Tour privato</option><option value="shared">Tour condiviso</option><option value="transfer">Transfer</option>
+                    </select></label>
+                  </div>
+                  <label class="f">Tour<select name="o" id="tour-sel"></select></label>
+                  <label class="f">Titolo mostrato al cliente<input name="t" /></label>
+                  <div class="f2">
+                    <label class="f">Data<input name="d" type="date" /></label>
+                    <label class="f">Ora<input name="h" type="time" /></label>
+                  </div>
+                  <div class="f2">
+                    <label class="f">Persone<input name="p" type="number" min="1" max="60" value="2" /></label>
+                    <label class="f">Totale (€)<input name="e" type="number" min="0" step="1" /></label>
+                  </div>
+                  <label class="f">Punto di ritiro<input name="u" /></label>
+                  <label class="f">Nave / volo / treno<input name="s" /></label>
+                  <label class="f">Nome cliente<input name="n" /></label>
+                  <div class="f2">
+                    <label class="f">WhatsApp cliente<input name="phone" type="tel" placeholder="+1 555 123 4567" /></label>
+                    <label class="f">Email cliente<input name="email" type="email" /></label>
+                  </div>
+                  <label class="f">Note del cliente<textarea name="x" rows="2"></textarea></label>
+                </form>
+              </details>
+
+              <h2 class="sec">3. Quando hai finito tutto</h2>
+              <button class="btn big" id="confirm" type="button">✅ Prenotazione completata – Conferma</button>
+              <p class="note">Premilo solo dopo aver completato tutto fuori dall’app (pagamento, accordi col cliente). Poi invii al cliente il messaggio con il link di conferma.</p>
+              <button class="btn ghost" id="save" type="button">💾 Salva in agenda (senza confermare)</button>
+              <div class="btns2" style="margin-top:10px">
+                <button class="btn ghost hidden" id="cancel-b" type="button">🚫 Annulla prenotazione</button>
+                <button class="btn ghost hidden" id="restore-b" type="button">↩️ Riattiva</button>
+                <button class="btn ghost hidden" id="delete-b" type="button">🗑 Elimina</button>
+              </div>
+            </section>
+
+            <section id="result" class="hidden">
+              <h2 class="sec">4. Invia al cliente</h2>
+              <div class="card">
+                <label class="f" style="margin-top:0">Messaggio (puoi modificarlo)<textarea class="out" id="msg" rows="9"></textarea></label>
+                <a class="btn wa" id="send-wa" target="_blank" rel="noopener" style="margin-top:12px">Invia su WhatsApp</a>
+                <a class="btn navy" id="send-mail" target="_blank" rel="noopener">Invia per email</a>
+                <button class="btn ghost" id="copy" type="button">Copia messaggio</button>
+                <a class="btn ghost" id="test-link" target="_blank" rel="noopener">Prova il link</a>
+                <button class="btn ghost" id="back-b2" type="button">← Torna all’agenda</button>
+              </div>
+            </section>
+          </section>
+
+          <!-- ───────── AGENDA ───────── -->
+          <section id="view-agenda" class="hidden">
+            <div id="agenda-body"></div>
+            <details class="edit">
+              <summary>⚙️ Strumenti</summary>
+              <div class="card">
+                <p class="small muted">L’agenda è salvata su questo telefono. Se vuoi una copia di sicurezza (o spostarla su un altro dispositivo), scarica il file e caricalo dove ti serve.</p>
+                <button class="btn ghost" id="exp" type="button" style="margin-top:10px">Scarica una copia dell’agenda</button>
+                <label class="btn ghost">Carica una copia<input type="file" id="imp" accept="application/json,.json" hidden /></label>
+              </div>
+            </details>
+          </section>
         </section>
 
-        <section id="result" class="hidden">
-          <h2 class="sec">4. Invia al cliente</h2>
-          <div class="card">
-            <label class="f" style="margin-top:0">Messaggio (puoi modificarlo)<textarea class="out" id="msg" rows="9"></textarea></label>
-            <a class="btn wa" id="send-wa" target="_blank" rel="noopener" style="margin-top:12px">Invia su WhatsApp</a>
-            <a class="btn navy" id="send-mail" target="_blank" rel="noopener">Invia per email</a>
-            <button class="btn ghost" id="copy" type="button">Copia messaggio</button>
-            <a class="btn ghost" id="test-link" target="_blank" rel="noopener">Prova il link</a>
-          </div>
-        </section>
-
-        <section id="hist-section" class="hidden">
-          <h2 class="sec">Ultime conferme</h2>
-          <div class="card"><ul class="hist" id="hist"></ul></div>
-        </section>
-      </section>
-
-      <button class="btn ghost" id="lock" type="button" style="margin-top:24px">🔒 Blocca il pannello</button>
+        <button class="btn ghost" id="lock" type="button" style="margin-top:24px">🔒 Blocca il pannello</button>
       </div>
 
       <p class="note" style="text-align:center;margin-top:24px">Questa pagina non è collegata all'app: aprila solo dal tuo telefono.<br>Il codice di accesso è nel PDF che ti ho dato.</p>
@@ -121,10 +187,10 @@
   </div>
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="config.js?v=14"></script>
-  <script src="data.js?v=14"></script>
-  <script src="confirm.js?v=14"></script>
-  <script src="admin-vault.js?v=14"></script>
-  <script src="admin.js?v=14"></script>
+  <script src="config.js?v=15"></script>
+  <script src="data.js?v=15"></script>
+  <script src="confirm.js?v=15"></script>
+  <script src="admin-vault.js?v=15"></script>
+  <script src="admin.js?v=15"></script>
 </body>
 </html>

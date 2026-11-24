@@ -26,13 +26,17 @@ In Gmail puoi creare un filtro sull'oggetto `[Mister Cab App]` per dare a queste
 L'email parte dall'app di posta del cliente: il cliente deve premere "Invia".
 
 ## Come si conferma una prenotazione
-1. Il cliente invia la richiesta dall'app (WhatsApp o email). Il messaggio contiene **tutti i dettagli**: codice prenotazione, nome, telefono, email, tour, data, ora, numero di persone, punto di ritiro con **hotel o indirizzo** (obbligatorio se il ritiro non è al porto), **nave, volo o treno** (nome o numero), note e prezzo. Anche il pulsante "Chat with Ciro" di un viaggio manda tutti questi dettagli. Nell'app la prenotazione risulta **Pending**.
+1. Il cliente invia la richiesta dall'app (WhatsApp o email). Il messaggio contiene **tutti i dettagli**: codice prenotazione, nome, telefono, email, tour, data, ora, numero di persone, punto di ritiro con **hotel o indirizzo** (obbligatorio se il ritiro non è al porto), **nave, volo o treno** (nome o numero), note e prezzo. Nell'app la prenotazione risulta **Pending**.
 2. Ciro gestisce tutto **fuori dall'app**: disponibilità, pagamento dei 50 € (link SumUp), accordi col cliente.
-3. A cose fatte apre **`admin.html`**, incolla la richiesta (o tocca *Incolla dagli appunti*): i dati si compilano da soli e compare un riepilogo. Se manca qualcosa lo segnala e lo si completa in *Correggi o completa i dati*.
+3. A cose fatte apre **`admin.html`** (scheda **Richiesta**) e incolla la richiesta (o tocca *Incolla dagli appunti*): i dati si compilano da soli, la richiesta va **in agenda come "Da confermare"** e compare un riepilogo. Se manca qualcosa lo segnala e lo si completa in *Correggi o completa i dati*. Per le richieste telefoniche c'è *Inserisci a mano*.
 4. Preme **✅ Prenotazione completata – Conferma** (chiede un'ultima conferma) e poi *Invia su WhatsApp* (si apre la chat con il cliente) oppure *Invia per email*.
 5. Il cliente apre il link: la prenotazione diventa **Confirmed** e compare il tour pass. Funziona anche su un altro telefono.
 
-In fondo alla pagina c'è l'elenco delle **ultime conferme** con *Reinvia*, utile se il cliente perde il messaggio.
+### Agenda (scheda **Agenda**)
+- **Lista** per data e **Calendario** mensile (pallino arancione = da confermare, verde = confermata). Filtri: Tutte / Da confermare / Confermate / Annullate; di base si vedono le date future, con la spunta anche quelle passate. Il numero sulla scheda indica quante richieste future sono ancora da confermare.
+- Toccando una prenotazione si apre e si può **modificare tutto** (data, persone, ritiro, nave/volo, note, prezzo…), poi *Salva le modifiche*. Da lì si può anche **Annullare**, **Riattivare** o **Eliminare**.
+- Per una prenotazione già confermata il pulsante diventa **Aggiorna e reinvia la conferma**: crea un link nuovo (utile se il cliente lo perde, o se i dati sono cambiati). Annullare o modificare **non avvisa il cliente**: lo si scrive a mano.
+- L'agenda è salvata **sul telefono (o computer) dove si usa il pannello**, non in rete. Sotto *Strumenti* c'è una copia di sicurezza facoltativa (scarica/carica un file). Per un'agenda condivisa tra più dispositivi serve un archivio online (prossimo passo possibile).
 
 Il cliente **non può confermarsi da solo**: il link è firmato con una chiave che si sblocca solo con il codice di accesso di Ciro. Se il link viene modificato anche di un carattere, l'app lo rifiuta.
 

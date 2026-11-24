@@ -1,10 +1,12 @@
 /* ============================================================
-   admin.html — Ciro confirms a booking with one button (signed link)
+   admin.html — Ciro's panel: requests, agenda and one-button confirmation
    One access code opens the panel. The signing key is stored encrypted
    in admin-vault.js and only decrypted in the browser with that code.
+   The agenda (all requests, confirmed or not) is kept on this device.
    ============================================================ */
 
-const HIST_STORE = 'mcc_admin_history';
+const BK_STORE = 'mcc_admin_bookings';
+const OLD_HIST = 'mcc_admin_history';       // list of confirmations kept by the previous version
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -13,7 +15,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.remove('hidden');
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => t.classList.add('hidden'), 2600);
+  toast._t = setTimeout(() => t.classList.add('hidden'), 2800);
 }
 
 let SIGN_KEY = null;      // private signing key (JWK), only in memory after login
@@ -23,7 +25,79 @@ async function copy(text, okMsg) {
   catch { toast('Copia non riuscita: seleziona il testo a mano'); }
 }
 
-// ── form ──────────────────────────────────────────────────────
+// ── dates ─────────────────────────────────────────────────────
+const pad = n => String(n).padStart(2, '0');
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const dObj = ds => new Date(ds + 'T12:00:00');
+const fmtLong = d => dObj(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const fmtShort = d => dObj(d).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const fmtDayHead = d => dObj(d).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+// ── agenda storage ────────────────────────────────────────────
+const ST = { pending: ['Da confermare', ''], confirmed: ['Confermata', 'ok'], cancelled: ['Annullata', 'grey'] };
+const chip = s => `<span class="chip ${(ST[s] || ST.pending)[1]}">${(ST[s] || ST.pending)[0]}</span>`;
+
+function loadBookings() { try { return JSON.parse(localStorage.getItem(BK_STORE)) || []; } catch { return []; } }
+function saveBookings(a) {
+  try { localStorage.setItem(BK_STORE, JSON.stringify(a)); }
+  catch { toast('Non riesco a salvare l’agenda su questo telefono'); }
+}
+const getBooking = c => loadBookings().find(b => b.c === c);
+function upsertBooking(rec) {
+  const a = loadBookings();
+  const i = a.findIndex(b => b.c === rec.c);
+  if (i >= 0) a[i] = { ...a[i], ...rec, updatedAt: Date.now() };
+  else a.push({ createdAt: Date.now(), ...rec });
+  saveBookings(a);
+  updateBadge();
+  return a.find(b => b.c === rec.c);
+}
+function removeBooking(c) { saveBookings(loadBookings().filter(b => b.c !== c)); updateBadge(); }
+
+function updateBadge() {
+  const t = todayISO();
+  const n = loadBookings().filter(b => b.status === 'pending' && b.d >= t).length;
+  $('#badge').textContent = n ? String(n) : '';
+}
+
+// Confirmations kept by the earlier version become agenda entries (once)
+function migrateHistory() {
+  try {
+    if (localStorage.getItem('mcc_admin_migrated')) return;
+    const h = JSON.parse(localStorage.getItem(OLD_HIST) || '[]');
+    h.forEach(x => {
+      try {
+        const d = JSON.parse(new TextDecoder().decode(B64U.dec(x.link.split('#/confirm/')[1].split('.')[0])));
+        if (d && d.c && !getBooking(d.c)) upsertBooking({
+          c: d.c, k: d.k || 'private', o: d.o || '', t: d.t, d: d.d, h: d.h || '', p: d.p || 1, u: d.u || '',
+          e: d.e ?? null, n: d.n, s: d.s || '', x: '', phone: x.phone || '', email: x.email || '',
+          status: 'confirmed', confirmedAt: x.at, createdAt: x.at,
+        });
+      } catch { /* skip a broken entry */ }
+    });
+    localStorage.setItem('mcc_admin_migrated', '1');
+  } catch { /* ignore */ }
+}
+
+// ── views ─────────────────────────────────────────────────────
+function showView(v) {
+  $('#view-new').classList.toggle('hidden', v !== 'new');
+  $('#view-agenda').classList.toggle('hidden', v !== 'agenda');
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'agenda') renderAgenda();
+  window.scrollTo(0, 0);
+}
+$('#tabs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-v]');
+  if (!b) return;
+  if (b.dataset.v === 'new' && currentCode) startNew();      // leaving a booking behind: start a clean request
+  showView(b.dataset.v);
+});
+$('#back-b').addEventListener('click', () => showView('agenda'));
+$('#back-b2').addEventListener('click', () => showView('agenda'));
+$('#new-b').addEventListener('click', () => { startNew(); showView('new'); });
+
+// ── editor (form) ─────────────────────────────────────────────
 const form = $('#cf');
 const tourSel = $('#tour-sel');
 tourSel.innerHTML = '<option value="">— altro / scrivi il titolo —</option>' +
@@ -31,8 +105,7 @@ tourSel.innerHTML = '<option value="">— altro / scrivi il titolo —</option>'
 
 const val = () => Object.fromEntries(new FormData(form));
 const KIND_LABEL = { private: 'Tour privato', shared: 'Tour condiviso', transfer: 'Transfer' };
-const fmtLong = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const fmtShort = d => new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+let currentCode = null;      // booking being edited; null = a new request
 
 tourSel.addEventListener('change', () => {
   const t = TOURS.find(x => x.id === tourSel.value);
@@ -47,7 +120,7 @@ form.e.addEventListener('input', () => { form.e.dataset.touched = '1'; });
 form.p.addEventListener('input', updatePrice);
 form.addEventListener('input', renderSummary);
 
-// What must be there before the booking can be confirmed
+// What must be there before the booking can be saved or confirmed
 const REQUIRED = [['c', 'codice prenotazione'], ['t', 'titolo'], ['d', 'data'], ['p', 'persone'], ['u', 'punto di ritiro'], ['n', 'nome cliente']];
 const missing = v => REQUIRED.filter(([k]) => !String(v[k] ?? '').trim()).map(([, l]) => l);
 
@@ -79,15 +152,73 @@ function renderSummary() {
     ? `<div class="warn-box">Mancano: <b>${miss.join(', ')}</b>. Compilali in “Correggi o completa i dati”.</div>`
     : (!v.phone && !v.email ? `<div class="warn-box">Non c’è né WhatsApp né email del cliente: potrai comunque copiare il messaggio.</div>` : '');
   if (miss.length) $('#edit').open = true;
-  $('#confirm').disabled = false;
 }
 
+// Booking record from the form
+function recordFromForm(status) {
+  const f = val();
+  return {
+    c: f.c.trim().toUpperCase(), k: f.k, o: f.o || '', t: f.t.trim(), d: f.d, h: f.h || '', p: +f.p || 1, u: f.u.trim(),
+    e: f.e === '' ? null : +f.e, n: f.n.trim(), s: (f.s || '').trim(), x: (f.x || '').trim(),
+    phone: (f.phone || '').trim(), email: (f.email || '').trim(), status,
+  };
+}
+function fillForm(b) {
+  form.reset(); delete form.e.dataset.touched;
+  tourSel.value = TOURS.some(t => t.id === b.o) ? b.o : '';
+  ['c', 'k', 't', 'd', 'h', 'p', 'u', 's', 'n', 'phone', 'email', 'x'].forEach(k => { form[k].value = b[k] ?? ''; });
+  form.e.value = b.e ?? '';
+  if (b.e != null) form.e.dataset.touched = '1';
+  renderSummary();
+}
+
+// Shows/hides the buttons that depend on the booking being edited
+function refreshEditorUI() {
+  const b = currentCode ? getBooking(currentCode) : null;
+  $('#paste-card').classList.toggle('hidden', !!b);
+  $('#edit-banner').classList.toggle('hidden', !b);
+  if (b) $('#edit-banner-text').innerHTML = `<b>${esc(b.c)}</b> · ${esc(b.n)} ${chip(b.status)}<div class="small muted" style="margin-top:4px">Qui puoi modificare tutto, poi salvare o confermare.</div>`;
+  form.c.readOnly = !!b;
+  $('#confirm').textContent = b && b.status === 'confirmed' ? '✅ Aggiorna e reinvia la conferma' : '✅ Prenotazione completata – Conferma';
+  $('#save').textContent = b ? '💾 Salva le modifiche' : '💾 Salva in agenda (senza confermare)';
+  $('#cancel-b').classList.toggle('hidden', !b || b.status === 'cancelled');
+  $('#restore-b').classList.toggle('hidden', !b || b.status !== 'cancelled');
+  $('#delete-b').classList.toggle('hidden', !b);
+}
+
+function startNew() {
+  currentCode = null;
+  form.reset(); delete form.e.dataset.touched; tourSel.value = '';
+  $('#paste').value = '';
+  $('#result').classList.add('hidden');
+  $('#summary').classList.add('hidden');
+  refreshEditorUI();
+}
+function openBooking(code) {
+  const b = getBooking(code);
+  if (!b) return;
+  currentCode = code;
+  fillForm(b);
+  $('#edit').open = false;
+  $('#result').classList.add('hidden');
+  refreshEditorUI();
+  showView('new');
+}
+$('#manual').addEventListener('click', () => {
+  startNew();
+  form.c.value = makeBookingCode();
+  $('#edit').open = true;
+  renderSummary();
+  $('#summary').scrollIntoView({ behavior: 'smooth' });
+});
+
+// ── reading a pasted request ──────────────────────────────────
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 function parseEnglishDate(s) {
   const m = String(s).match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
   if (!m) return '';
   const mi = MONTHS.findIndex(x => x.startsWith(m[2].toLowerCase().slice(0, 3)));
-  return mi < 0 ? '' : `${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return mi < 0 ? '' : `${m[3]}-${pad(mi + 1)}-${m[1].padStart(2, '0')}`;
 }
 
 // Reads the requests the app sends (WhatsApp or email, same lines)
@@ -111,7 +242,7 @@ function parseRequest(txt) {
   const ship = get('Ship / flight / train number') || get('Cruise company / ship name') || get('Flight/train/ship');
   set('s', ship.replace(/^-$/, ''));
   const detail = get('Pick-up details');
-  const place = (loc) => [loc, detail].filter(Boolean).join(' – ');
+  const place = loc => [loc, detail].filter(Boolean).join(' – ');
   set('x', get('Notes'));
   if (/I need a transfer/i.test(txt)) {
     form.k.value = 'transfer';
@@ -136,18 +267,63 @@ function parseRequest(txt) {
   renderSummary();
 }
 
+// After reading a request: already in the agenda → open it; complete → save it as "da confermare"
+function afterParse() {
+  const v = val();
+  const code = (v.c || '').trim().toUpperCase();
+  const ex = code && getBooking(code);
+  if (ex) { openBooking(code); toast('Era già in agenda: ' + ST[ex.status][0]); return; }
+  if (v.c && v.d && v.n && v.t) {
+    const rec = upsertBooking(recordFromForm('pending'));
+    currentCode = rec.c;
+    refreshEditorUI();
+    toast('Salvata in agenda: da confermare');
+  } else toast('Richiesta letta: completa i dati mancanti');
+}
+
 let pasteTimer;
 $('#paste').addEventListener('input', () => {
   clearTimeout(pasteTimer);
-  pasteTimer = setTimeout(() => { if ($('#paste').value.trim()) { parseRequest($('#paste').value); $('#result').classList.add('hidden'); } }, 350);
+  pasteTimer = setTimeout(() => {
+    const t = $('#paste').value;
+    if (t.trim()) { parseRequest(t); $('#result').classList.add('hidden'); afterParse(); }
+  }, 450);
 });
 $('#clip').addEventListener('click', async () => {
   try {
     const t = await navigator.clipboard.readText();
     if (!t.trim()) { toast('Gli appunti sono vuoti'); return; }
-    $('#paste').value = t; parseRequest(t); $('#result').classList.add('hidden');
-    toast('Richiesta letta: controlla il riepilogo');
+    $('#paste').value = t; parseRequest(t); $('#result').classList.add('hidden'); afterParse();
   } catch { toast('Non riesco a leggere gli appunti: incolla il testo nel riquadro'); }
+});
+
+// ── save / cancel / delete ────────────────────────────────────
+function validOrWarn() {
+  const miss = missing(val());
+  if (miss.length) { $('#edit').open = true; toast('Mancano: ' + miss.join(', ')); return false; }
+  return true;
+}
+$('#save').addEventListener('click', () => {
+  if (!validOrWarn()) return;
+  const ex = getBooking(val().c.trim().toUpperCase());
+  const rec = upsertBooking(recordFromForm(ex ? ex.status : 'pending'));
+  currentCode = rec.c;
+  refreshEditorUI();
+  toast(ex && ex.status === 'confirmed' ? 'Modifiche salvate (il cliente non è stato avvisato)' : 'Salvata in agenda');
+});
+$('#cancel-b').addEventListener('click', () => {
+  if (!confirm('Segnare questa prenotazione come ANNULLATA?\n\nIl cliente non riceve nessun avviso automatico: scrivigli tu.')) return;
+  upsertBooking({ ...recordFromForm('cancelled') });
+  refreshEditorUI(); toast('Prenotazione annullata');
+});
+$('#restore-b').addEventListener('click', () => {
+  upsertBooking({ ...recordFromForm('pending') });
+  refreshEditorUI(); toast('Riattivata: da confermare');
+});
+$('#delete-b').addEventListener('click', () => {
+  if (!confirm('ELIMINARE definitivamente questa prenotazione dall’agenda?')) return;
+  removeBooking(currentCode);
+  startNew(); showView('agenda'); toast('Eliminata dall’agenda');
 });
 
 // ── confirm ───────────────────────────────────────────────────
@@ -155,9 +331,8 @@ const digitsOf = p => (p || '').replace(/[^\d]/g, '');
 
 async function createConfirmation() {
   if (!SIGN_KEY) { toast('Accedi di nuovo con il codice'); return; }
+  if (!validOrWarn()) return;
   const f = val();
-  const miss = missing(f);
-  if (miss.length) { $('#edit').open = true; toast('Mancano: ' + miss.join(', ')); return; }
   if (!confirm(`Confermare la prenotazione ${f.c.trim().toUpperCase()} di ${f.n.trim()} (${fmtShort(f.d)})?\n\nIl cliente riceverà il link di conferma.`)) return;
   const data = {
     c: f.c.trim().toUpperCase(), k: f.k, o: f.o || undefined, t: f.t.trim(), d: f.d, h: f.h || undefined,
@@ -178,45 +353,132 @@ async function createConfirmation() {
   lines.push('', 'Open this link to see your confirmed booking and your tour pass in the app:', link,
     '', 'Visiting other ports in Italy or the Mediterranean? Discover TOURISFIED, our network of trusted local drivers: www.tourisfied.com',
     '', `A presto, ${CONFIG.driverName} – ${CONFIG.brand} Team`);
-  const entry = { c: data.c, n: data.n, t: data.t, d: data.d, phone: f.phone || '', email: f.email || '', link, msg: lines.join('\n'), at: Date.now() };
-  saveHistory(entry);
-  showResult(entry);
+  const rec = upsertBooking({ ...recordFromForm('confirmed'), confirmedAt: Date.now(), link, msg: lines.join('\n') });
+  currentCode = rec.c;
+  refreshEditorUI();
+  showResult(rec);
 }
+$('#confirm').addEventListener('click', createConfirmation);
 
-function showResult(e) {
-  $('#msg').value = e.msg;
+function showResult(b) {
+  $('#msg').value = b.msg;
   const wire = () => {
     const text = encodeURIComponent($('#msg').value);
-    const d = digitsOf(e.phone);
+    const d = digitsOf(b.phone);
     // With a full international number the chat opens straight away; otherwise WhatsApp asks for the contact
     $('#send-wa').href = d.length >= 8 ? `https://wa.me/${d}?text=${text}` : `https://wa.me/?text=${text}`;
     const mail = $('#send-mail');
-    if (e.email) { mail.href = `mailto:${e.email}?subject=${encodeURIComponent('Booking confirmed – ' + e.c + ' – ' + e.t)}&body=${text}`; mail.classList.remove('hidden'); }
+    if (b.email) { mail.href = `mailto:${b.email}?subject=${encodeURIComponent('Booking confirmed – ' + b.c + ' – ' + b.t)}&body=${text}`; mail.classList.remove('hidden'); }
     else mail.classList.add('hidden');
   };
   wire();
   $('#msg').oninput = wire;
-  $('#test-link').href = e.link;
+  $('#test-link').href = b.link;
   $('#result').classList.remove('hidden');
   $('#result').scrollIntoView({ behavior: 'smooth' });
 }
-
-function loadHistory() { try { return JSON.parse(localStorage.getItem(HIST_STORE)) || []; } catch { return []; } }
-function saveHistory(entry) {
-  const h = loadHistory().filter(x => x.c !== entry.c);
-  h.unshift(entry);
-  try { localStorage.setItem(HIST_STORE, JSON.stringify(h.slice(0, 15))); } catch { /* ignore */ }
-  renderHistory();
-}
-function renderHistory() {
-  const h = loadHistory();
-  $('#hist-section').classList.toggle('hidden', !h.length);
-  $('#hist').innerHTML = h.map((x, i) => `<li><span><b>${esc(x.n)}</b><br><span class="muted small">${esc(x.c)} · ${esc(x.t)} · ${fmtShort(x.d)}</span></span><button data-i="${i}" type="button">Reinvia</button></li>`).join('');
-  document.querySelectorAll('#hist button').forEach(b => b.addEventListener('click', () => showResult(loadHistory()[+b.dataset.i])));
-}
-
-$('#confirm').addEventListener('click', createConfirmation);
 $('#copy').addEventListener('click', () => copy($('#msg').value, 'Messaggio copiato'));
+
+// ── agenda ────────────────────────────────────────────────────
+const ag = { view: 'list', filter: 'all', past: false, month: new Date(new Date().getFullYear(), new Date().getMonth(), 1), sel: null };
+
+const byDate = (a, b) => (a.d + (a.h || '')).localeCompare(b.d + (b.h || ''));
+
+function bookingRow(b) {
+  const d = dObj(b.d);
+  const past = b.d < todayISO();
+  return `<button type="button" class="brow ${past ? 'past' : ''} ${b.status === 'cancelled' ? 'cancelled' : ''}" data-open="${esc(b.c)}">
+    <div class="bt"><b>${d.getDate()}</b><span>${d.toLocaleDateString('it-IT', { month: 'short' })}</span></div>
+    <div class="binfo"><b>${esc(b.t)}</b>${esc(b.n)} · ${esc(b.p)} pers.${b.h ? ' · ' + esc(b.h) : ''}<div class="small muted">${esc(b.c)}</div></div>
+    ${chip(b.status)}
+  </button>`;
+}
+
+function renderAgenda() {
+  const all = loadBookings();
+  const cnt = s => all.filter(b => b.status === s).length;
+  const filters = [['all', 'Tutte', all.length], ['pending', 'Da confermare', cnt('pending')], ['confirmed', 'Confermate', cnt('confirmed')], ['cancelled', 'Annullate', cnt('cancelled')]];
+  const list = all.filter(b => ag.filter === 'all' || b.status === ag.filter).sort(byDate);
+  let body = '';
+
+  if (ag.view === 'list') {
+    const t = todayISO();
+    const shown = list.filter(b => ag.past || b.d >= t);
+    const hiddenPast = list.length - shown.length;
+    let last = '';
+    body = shown.map(b => (b.d !== last ? (last = b.d, `<div class="dayh">${fmtDayHead(b.d)}</div>`) : '') + bookingRow(b)).join('');
+    if (!shown.length) body = `<div class="card empty"><div class="big">🗓️</div><p class="muted">${all.length ? 'Nessuna prenotazione in questa vista.' : 'Ancora nessuna prenotazione. Incolla una richiesta nella scheda “Richiesta”.'}</p></div>`;
+    body += `<label class="f" style="display:flex;gap:10px;align-items:center;font-weight:400;margin-top:14px"><input type="checkbox" id="ag-past" ${ag.past ? 'checked' : ''} style="width:auto" /> <span>Mostra anche le date passate${!ag.past && hiddenPast ? ` (${hiddenPast})` : ''}</span></label>`;
+  } else {
+    const y = ag.month.getFullYear(), m = ag.month.getMonth();
+    const startIdx = (new Date(y, m, 1).getDay() + 6) % 7;
+    const days = new Date(y, m + 1, 0).getDate();
+    const t = todayISO();
+    const items = ds => list.filter(b => b.d === ds && b.status !== 'cancelled' || (ag.filter === 'cancelled' && b.d === ds));
+    let cells = ['L', 'M', 'M', 'G', 'V', 'S', 'D'].map(x => `<div class="wd">${x}</div>`).join('') + '<button class="empty" disabled></button>'.repeat(startIdx);
+    for (let d = 1; d <= days; d++) {
+      const ds = `${y}-${pad(m + 1)}-${pad(d)}`;
+      const it = items(ds);
+      const dots = (it.some(b => b.status === 'pending') ? '<i class="dot p"></i>' : '') + (it.some(b => b.status === 'confirmed') ? '<i class="dot c"></i>' : '');
+      cells += `<button type="button" data-day="${ds}" class="${ds === t ? 'today' : ''} ${ds === ag.sel ? 'sel' : ''}">${d}<span class="dots">${dots}</span></button>`;
+    }
+    const dayList = ag.sel ? list.filter(b => b.d === ag.sel) : [];
+    body = `<div class="calnav"><button type="button" data-nav="-1">‹</button><b>${ag.month.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</b><button type="button" data-nav="1">›</button></div>
+      <div class="cal">${cells}</div>
+      <div class="legend"><i class="dot p" style="display:inline-block"></i>da confermare <i class="dot c" style="display:inline-block"></i>confermata · <a href="#" data-nav="0" style="text-decoration:underline">oggi</a></div>
+      ${ag.sel ? `<div class="dayh">${fmtDayHead(ag.sel)}</div>${dayList.length ? dayList.map(bookingRow).join('') : '<p class="small muted">Nessuna prenotazione in questo giorno.</p>'}` : '<p class="small muted" style="margin-top:10px">Tocca un giorno per vedere le prenotazioni.</p>'}`;
+  }
+
+  $('#agenda-body').innerHTML = `
+    <div class="atabs"><button type="button" data-av="list" class="${ag.view === 'list' ? 'on' : ''}">☰ Lista</button><button type="button" data-av="cal" class="${ag.view === 'cal' ? 'on' : ''}">🗓 Calendario</button></div>
+    <div class="chips">${filters.map(([k, l, n]) => `<button type="button" class="chipbtn ${ag.filter === k ? 'on' : ''}" data-f="${k}">${l} (${n})</button>`).join('')}</div>
+    ${body}`;
+}
+
+$('#agenda-body').addEventListener('click', e => {
+  const t = e.target.closest('[data-open],[data-av],[data-f],[data-nav],[data-day]');
+  if (!t) return;
+  e.preventDefault();
+  if (t.dataset.open) return openBooking(t.dataset.open);
+  if (t.dataset.av) ag.view = t.dataset.av;
+  if (t.dataset.f) ag.filter = t.dataset.f;
+  if (t.dataset.day) ag.sel = ag.sel === t.dataset.day ? null : t.dataset.day;
+  if (t.dataset.nav !== undefined) {
+    const n = +t.dataset.nav;
+    const base = n === 0 ? new Date() : ag.month;
+    ag.month = new Date(base.getFullYear(), base.getMonth() + n, 1);
+    if (n === 0) ag.sel = todayISO();
+  }
+  renderAgenda();
+});
+$('#agenda-body').addEventListener('change', e => { if (e.target.id === 'ag-past') { ag.past = e.target.checked; renderAgenda(); } });
+
+// copy of the agenda (optional safety net)
+$('#exp').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(loadBookings(), null, 1)], { type: 'application/json' }));
+  a.download = `agenda-mister-cab-${todayISO()}.json`;
+  a.click();
+});
+$('#imp').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const arr = JSON.parse(await file.text());
+    if (!Array.isArray(arr)) throw new Error('format');
+    if (!confirm(`Caricare ${arr.length} prenotazioni?\n\nQuelle con lo stesso codice vengono sostituite.`)) { e.target.value = ''; return; }
+    arr.forEach(b => { if (b && b.c && b.d) upsertBooking(b); });
+    toast('Agenda caricata'); renderAgenda();
+  } catch { toast('File non valido'); }
+  e.target.value = '';
+});
+
+function initAgenda() {
+  migrateHistory();
+  updateBadge();
+  refreshEditorUI();
+  showView('new');
+}
 
 // ── Login with the access code ────────────────────────────────
 const SESSION_KEY = 'mcc_admin_session';
@@ -250,7 +512,7 @@ function openPanel() {
   const same = SIGN_KEY && CONFIG.confirmPublicKey && SIGN_KEY.x === CONFIG.confirmPublicKey.x && SIGN_KEY.y === CONFIG.confirmPublicKey.y;
   $('#key-section').innerHTML = same ? '' : '<div class="warn-box">Attenzione: le conferme create qui non verrebbero riconosciute dall\'app. Avvisa chi gestisce l\'app.</div>';
   $('#form-section').classList.remove('hidden');
-  renderHistory();
+  initAgenda();
 }
 
 let fails = 0, lockedUntil = 0;
