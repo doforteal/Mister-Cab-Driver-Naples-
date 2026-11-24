@@ -18,7 +18,7 @@ const waLink = text => `https://wa.me/${CONFIG.whatsapp}?text=${encodeURICompone
 const mailLink = (subj, body) => `mailto:${CONFIG.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
 
 // Full pick-up text of a trip: the chosen point plus hotel / address / terminal details
-const pickupText = t => [t.pickup, t.pickupDetail].filter(Boolean).join(' – ');
+const pickupText = t => t.pickupDetail ? `${t.pickup} (${t.pickupDetail})` : (t.pickup || '');
 
 // Customer reference added to every message sent to Ciro (name, mobile, email)
 function customerRef() {
@@ -28,14 +28,14 @@ function customerRef() {
 // Short free-form message to Ciro (chat buttons), always with the customer's details
 function chatLink(topic, bookingLines = []) {
   return waLink([`Hello ${CONFIG.driverName}, ${topic}`, '', ...bookingLines, customerRef(),
-    '', `— Sent from the ${CONFIG.brand} app`].join('\n'));
+    '', `Sent from the ${CONFIG.brand} app`].join('\n'));
 }
 
 // Booking requests go to Ciro by WhatsApp or by email (CONFIG.email).
 // Both always carry the booking code and say they come from the app.
 const APP_TAG = '[Mister Cab App]';
 function sendRequest(channel, { kindLabel, code, title, date, msg }) {
-  const body = `${msg}\n\n— Sent from the ${CONFIG.brand} app`;
+  const body = `${msg}\n\nSent from the ${CONFIG.brand} app`;
   const subject = `${APP_TAG} ${kindLabel} ${code} – ${title} – ${fmtDate(date)}`;
   window.open(channel === 'email' ? mailLink(subject, body) : waLink(body), '_blank', 'noopener');
 }
@@ -176,7 +176,7 @@ function tripRow(t) {
 
 function statusChip(t) {
   if (t.status === 'cancelled') return '<span class="chip grey">Cancelled</span>';
-  if (t.status === 'confirmed') return isPastTrip(t) ? '<span class="chip ok">Completed</span>' : '<span class="chip ok">✓ Confirmed</span>';
+  if (t.status === 'confirmed') return isPastTrip(t) ? '<span class="chip ok">Completed</span>' : '<span class="chip ok">Confirmed</span>';
   return isPastTrip(t) ? '<span class="chip grey">Not confirmed</span>' : '<span class="chip">Pending</span>';
 }
 
@@ -399,7 +399,7 @@ function renderBook(id) {
     const m = f.date ? parseDate(f.date).getMonth() : -1;
     const coast = /Amalfi|Positano|Ravello|Sorrento/.test(t.title);
     $('#season').innerHTML = coast && m !== -1 && (m >= 10 || m <= 2)
-      ? `<p class="note">❄️ Winter note: from November to March much of the Amalfi Coast is closed. We suggest Amalfi (Duomo di Sant’Andrea) and Sorrento, with a short stop in Positano.</p>` : '';
+      ? `<p class="note">Winter note: from November to March much of the Amalfi Coast is closed. We suggest Amalfi (Duomo di Sant’Andrea) and Sorrento, with a short stop in Positano.</p>` : '';
   };
   form.addEventListener('input', upd); upd();
   $('#seeterms').addEventListener('click', e => { e.preventDefault(); showTerms(); });
@@ -473,7 +473,7 @@ function renderTransfer() {
       `- From: ${f.from}`, `- To: ${f.to}`, `- Date & time: ${fmtDate(f.date)} at ${f.time}`,
       `- Passengers: ${f.people} · Suitcases: ${f.bags}`, `- Ship / flight / train number: ${f.ref || '-'}`,
     ].filter(Boolean).join('\n');
-    const trip = { id: uid('T'), code, kind: 'transfer', title: `Transfer · ${f.from} → ${f.to}`, date: f.date, time: f.time,
+    const trip = { id: uid('T'), code, kind: 'transfer', title: `Transfer · ${f.from} to ${f.to}`, date: f.date, time: f.time,
       people: +f.people, pickup: f.from, ship: f.ref || '', price: null, status: 'pending', createdAt: Date.now() };
     S.trips.push(trip); save();
     sendRequest(channel, { kindLabel: 'Transfer request', code, title: trip.title, date: trip.date, msg });
@@ -508,7 +508,7 @@ function renderTrip(id) {
   if (!past && t.status === 'pending') {
     actions = `
       <div class="card">
-        <b>⏳ Pending confirmation</b>
+        <b>Pending confirmation</b>
         <p class="small muted" style="margin-top:4px">Your booking is not confirmed yet.</p>
         <ol class="stops" style="margin-top:6px">
           <li><span class="small">${esc(CONFIG.driverName)} checks availability and replies on WhatsApp or by email.</span></li>
@@ -527,15 +527,15 @@ function renderTrip(id) {
         <div class="qr">${qrImg(passText)}</div>
         <p class="small muted" style="margin-top:10px">Show this to your driver at pick-up.</p>
       </div>
-      ${hasPompeii ? `<div class="card"><b>🏛️ Pompeii tickets</b><p class="small muted" style="margin-top:4px">Buy them online about one month before (Pompeii Express, about €26). Want a licensed guide for 2h? €140 — ask ${esc(CONFIG.driverName)}.</p></div>` : ''}
+      ${hasPompeii ? `<div class="card"><b>Pompeii tickets</b><p class="small muted" style="margin-top:4px">Buy them online about one month before (Pompeii Express, about €26). Want a licensed guide for 2h? €140 — ask ${esc(CONFIG.driverName)}.</p></div>` : ''}
       <div class="btns2">
-        <a class="btn navy" id="gcal" target="_blank" rel="noopener" href="${esc(googleCalendarUrl(t))}">📅 Google Calendar</a>
-        <button class="btn ghost" id="ics" type="button">📅 Apple / other (.ics)</button>
+        <a class="btn navy" id="gcal" target="_blank" rel="noopener" href="${esc(googleCalendarUrl(t))}">Add to Google Calendar</a>
+        <button class="btn ghost" id="ics" type="button">Apple / other calendar (.ics)</button>
       </div>
       <div style="margin-top:12px">${tourisfiedCard()}</div>`;
   }
   if (past && confirmed) {
-    actions = `<div class="card"><b>Grazie mille! ❤️</b><p class="small muted" style="margin-top:4px">We hope you enjoyed your day. A short post in your cruise Facebook group helps us a lot: “I booked with Taxi Mister Cab Driver – Naples”.</p></div>
+    actions = `<div class="card"><b>Thank you for travelling with us.</b><p class="small muted" style="margin-top:4px">We hope you enjoyed your day. A short post in your cruise Facebook group helps us a lot: “I booked with Taxi Mister Cab Driver – Naples”.</p></div>
       <a class="btn" href="#/explore">Book your next tour</a>
       <div style="margin-top:12px">${tourisfiedCard()}</div>`;
   }
@@ -561,7 +561,7 @@ function renderTrip(id) {
   <div style="margin-top:12px">${actions}</div>
   <a class="btn wa" style="margin-top:10px" target="_blank" rel="noopener" href="${chatLink('I have a question about my booking.', [`- Booking code: ${t.code}`, `- Booking: ${t.title}`, `- Date: ${fmtDate(t.date)}${t.time ? ' at ' + t.time : ''}`,
     `- Number of people: ${t.people}`, `- Location: ${t.pickup || '-'}`, t.pickupDetail ? `- Pick-up details: ${t.pickupDetail}` : '',
-    `- Ship / flight / train number: ${t.ship || '-'}`, t.notes ? `- Notes: ${t.notes}` : '', `- Status: ${t.status}`].filter(Boolean))}">💬 Chat with ${esc(CONFIG.driverName)}</a>
+    `- Ship / flight / train number: ${t.ship || '-'}`, t.notes ? `- Notes: ${t.notes}` : '', `- Status: ${t.status}`].filter(Boolean))}">Chat with ${esc(CONFIG.driverName)}</a>
   ${!past && t.status === 'pending' ? '<button class="btn ghost" id="cancel" style="margin-top:10px">Cancel this request</button>' : ''}`;
 
   $('#ics')?.addEventListener('click', () => downloadICS(t));
@@ -581,7 +581,7 @@ async function renderConfirm(token) {
     <div class="card empty"><div class="big">⚠️</div>
       <p><b>${res.reason === 'not-setup' ? 'Confirmations are not active yet.' : 'This confirmation link is not valid.'}</b></p>
       <p class="small muted" style="margin-top:6px">Please check that you opened the whole link, or ask ${esc(CONFIG.driverName)} to send it again.</p>
-      <a class="btn wa" style="margin-top:14px" target="_blank" rel="noopener" href="${chatLink('my confirmation link does not open.')}">💬 Write to ${esc(CONFIG.driverName)}</a>
+      <a class="btn wa" style="margin-top:14px" target="_blank" rel="noopener" href="${chatLink('my confirmation link does not open.')}">Write to ${esc(CONFIG.driverName)}</a>
       <a class="btn ghost" href="#/trips">My Trips</a></div>`;
     return;
   }
@@ -600,7 +600,7 @@ async function renderConfirm(token) {
   save();
   history.replaceState(null, '', '#/trip/' + t.id);
   router();
-  toast('✅ Booking confirmed!');
+  toast('Booking confirmed');
 }
 
 // ── CALENDAR (.ics and Google Calendar) ───────────────────────
@@ -719,17 +719,17 @@ function renderAccount() {
   </form>
   <h2 class="sec">Contact us</h2>
   <div class="card rows">
-    <a href="${chatLink('I would like to talk to you.')}" target="_blank" rel="noopener"><span>💬 WhatsApp ${esc(CONFIG.phoneDisplay)}</span><span class="chev">›</span></a>
-    <a href="tel:+${CONFIG.whatsapp}"><span>📞 Call us</span><span class="chev">›</span></a>
-    <a href="mailto:${CONFIG.email}"><span>✉️ ${esc(CONFIG.email)}</span><span class="chev">›</span></a>
-    <a href="${CONFIG.website}" target="_blank" rel="noopener"><span>🌐 taximistercabdriver.com</span><span class="chev">›</span></a>
-    <a href="${CONFIG.poolingSite}" target="_blank" rel="noopener"><span>👥 taximrcabpooling.com</span><span class="chev">›</span></a>
-    <a href="${CONFIG.tourisfied}" target="_blank" rel="noopener"><span>🌍 TOURISFIED · other ports in Italy & the Mediterranean</span><span class="chev">›</span></a>
+    <a href="${chatLink('I would like to talk to you.')}" target="_blank" rel="noopener"><span>WhatsApp ${esc(CONFIG.phoneDisplay)}</span><span class="chev">›</span></a>
+    <a href="tel:+${CONFIG.whatsapp}"><span>Call us</span><span class="chev">›</span></a>
+    <a href="mailto:${CONFIG.email}"><span>${esc(CONFIG.email)}</span><span class="chev">›</span></a>
+    <a href="${CONFIG.website}" target="_blank" rel="noopener"><span>taximistercabdriver.com</span><span class="chev">›</span></a>
+    <a href="${CONFIG.poolingSite}" target="_blank" rel="noopener"><span>taximrcabpooling.com</span><span class="chev">›</span></a>
+    <a href="${CONFIG.tourisfied}" target="_blank" rel="noopener"><span>TOURISFIED: other ports in Italy and the Mediterranean</span><span class="chev">›</span></a>
   </div>
   <h2 class="sec">More</h2>
   <div class="card rows">
-    <button class="rowbtn" id="install"><span>📲 Install the app on your phone</span><span class="chev">›</span></button>
-    <button class="rowbtn" id="terms"><span>📄 Terms & Conditions</span><span class="chev">›</span></button>
+    <button class="rowbtn" id="install"><span>Install the app on your phone</span><span class="chev">›</span></button>
+    <button class="rowbtn" id="terms"><span>Terms & Conditions</span><span class="chev">›</span></button>
     <button class="rowbtn" id="reset"><span style="color:var(--terra)">Sign out & delete data on this phone</span><span class="chev">›</span></button>
   </div>
   <p class="note" style="text-align:center;margin-top:20px">${esc(CONFIG.brand)} · Naples, Italy</p>`;
@@ -755,7 +755,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferr
 function showInstall() {
   if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; return; }
   openSheet(`<h2>Install the app</h2>
-    <p style="margin-top:10px"><b>iPhone (Safari):</b> tap the Share button <span style="font-size:18px">⬆︎</span>, then <b>Add to Home Screen</b>.</p>
+    <p style="margin-top:10px"><b>iPhone (Safari):</b> tap the Share button (the square with an arrow), then <b>Add to Home Screen</b>.</p>
     <p style="margin-top:10px"><b>Android (Chrome):</b> tap the menu ⋮, then <b>Install app</b> or <b>Add to Home screen</b>.</p>
     <p class="note">The app opens full screen and keeps your trips and tour pass available offline.</p>`);
 }

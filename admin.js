@@ -242,12 +242,12 @@ function parseRequest(txt) {
   const ship = get('Ship / flight / train number') || get('Cruise company / ship name') || get('Flight/train/ship');
   set('s', ship.replace(/^-$/, ''));
   const detail = get('Pick-up details');
-  const place = loc => [loc, detail].filter(Boolean).join(' – ');
+  const place = loc => detail ? `${loc} (${detail})` : loc;
   set('x', get('Notes'));
   if (/I need a transfer/i.test(txt)) {
     form.k.value = 'transfer';
     const from = get('From'), to = get('To');
-    set('t', `Transfer · ${from} → ${to}`); set('u', from);
+    set('t', `Transfer · ${from} to ${to}`); set('u', from);
   } else if (/^Transfer\s*·/i.test(booking)) {
     form.k.value = 'transfer';
     set('t', booking); set('u', place(get('Location')));
@@ -267,7 +267,7 @@ function parseRequest(txt) {
   renderSummary();
 }
 
-// After reading a request: already in the agenda → open it; complete → save it as "da confermare"
+// After reading a request: already in the agenda, open it; complete, save it as "da confermare"
 function afterParse() {
   const v = val();
   const code = (v.c || '').trim().toUpperCase();
@@ -342,17 +342,22 @@ async function createConfirmation() {
   const base = CONFIG.appUrl || new URL('index.html', location.href).href.split('#')[0];
   const link = `${base}#/confirm/${token}`;
   const balance = data.k === 'private' && data.e ? data.e - CONFIG.depositAmount : null;
+  const first = data.n.split(/\s+/)[0];
   const lines = [
-    `Ciao ${data.n.split(/\s+/)[0]}! ✅ Your booking is confirmed.`, '',
-    data.t,
-    `📅 ${fmtLong(data.d)}${data.h ? ' at ' + data.h : ''}`,
-    `👥 ${data.p} guest${data.p > 1 ? 's' : ''} · 📍 ${data.u}`,
-    `🔖 Booking code: ${data.c}`,
+    `Dear ${first},`, '',
+    'We are pleased to confirm your booking.', '',
+    `Tour: ${data.t}`,
+    `Date: ${fmtLong(data.d)}`,
+    ...(data.h ? [`Meeting time: ${data.h}`] : []),
+    `Guests: ${data.p}`,
+    `Pick-up: ${data.u}`,
+    ...(data.s ? [`Ship / flight / train: ${data.s}`] : []),
+    `Booking code: ${data.c}`,
   ];
-  if (balance) lines.push('', `Thank you for the reservation fee. The balance of €${balance} is paid in cash (euros) directly to the driver on the day.`);
-  lines.push('', 'Open this link to see your confirmed booking and your tour pass in the app:', link,
-    '', 'Visiting other ports in Italy or the Mediterranean? Discover TOURISFIED, our network of trusted local drivers: www.tourisfied.com',
-    '', `A presto, ${CONFIG.driverName} – ${CONFIG.brand} Team`);
+  if (balance) lines.push('', `Thank you for the reservation fee. The balance of EUR ${balance} is to be paid in cash directly to the driver on the day of the tour.`);
+  lines.push('', 'You can view your confirmed booking and your tour pass in the app:', link,
+    '', 'Travelling to other ports in Italy or the Mediterranean? Discover our network of trusted local drivers: www.tourisfied.com',
+    '', 'Kind regards,', CONFIG.driverName, `${CONFIG.brand} Team`, `WhatsApp ${CONFIG.phoneDisplay}`);
   const rec = upsertBooking({ ...recordFromForm('confirmed'), confirmedAt: Date.now(), link, msg: lines.join('\n') });
   currentCode = rec.c;
   refreshEditorUI();
