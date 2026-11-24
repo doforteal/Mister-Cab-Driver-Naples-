@@ -49,11 +49,11 @@ Il cliente **non può confermarsi da solo**: il link è firmato con una chiave s
 - I prezzi dei tour sono in `data.js`
 
 ## Pubblicazione
-L'app è online su **https://taximistercab.netlify.app** (Netlify, gratuito). Sono file statici, senza build. Ogni modifica salvata sul branch `ccr-e2b2a702-juxdkc` aggiorna il sito da sola in circa un minuto.
+L'app è online su **https://taximrcab.pages.dev** (Cloudflare Pages, gratuito). Sono file statici, senza build. Ogni modifica salvata sul branch `ccr-e2b2a702-juxdkc` aggiorna il sito da sola in circa un minuto.
 
-- Pagina admin: https://taximistercab.netlify.app/admin.html
-- Il sito deve essere **pubblico** (in Netlify: *Site configuration → Access & security*; non deve essere protetto da password o privato).
+- Pagina admin: https://taximrcab.pages.dev/admin.html
 - La chiave di conferma vive nel browser, legata all'indirizzo del sito: se l'indirizzo cambia, in `admin.html` si ricarica con *Ho già una chiave* e il file di backup.
+- Un dominio proprio (per esempio un sottodominio di `taximrcabpooling.com`) si può collegare dalle impostazioni del progetto su Cloudflare (*Custom domains*).
 
 Per provarla in locale: `python3 -m http.server` e apri http://localhost:8000.
 
