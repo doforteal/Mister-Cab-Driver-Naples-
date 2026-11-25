@@ -36,6 +36,18 @@ const fmtDayHead = d => dObj(d).toLocaleDateString('it-IT', { weekday: 'long', d
 // ── agenda storage ────────────────────────────────────────────
 const ST = { pending: ['Da confermare', ''], confirmed: ['Confermata', 'ok'], cancelled: ['Annullata', 'grey'] };
 const chip = s => `<span class="chip ${(ST[s] || ST.pending)[1]}">${(ST[s] || ST.pending)[0]}</span>`;
+// A new request is a booking still waiting for Ciro to take charge: status stays 'pending' with isNew set,
+// so it also reads as 'Da confermare' in any earlier version of the panel.
+const isNewReq = b => b.status === 'pending' && !!b.isNew;
+const chipFor = b => isNewReq(b) ? '<span class="chip navy">Nuova richiesta</span>' : chip(b.status);
+const FILTERS = [
+  ['all', 'Tutte', () => true],
+  ['new', 'Nuove richieste', isNewReq],
+  ['pending', 'Da confermare', b => b.status === 'pending' && !b.isNew],
+  ['confirmed', 'Confermate', b => b.status === 'confirmed'],
+  ['cancelled', 'Annullate', b => b.status === 'cancelled'],
+];
+const matchFilter = (b, f) => (FILTERS.find(x => x[0] === f) || FILTERS[0])[2](b);
 
 function loadBookings() { try { return JSON.parse(localStorage.getItem(BK_STORE)) || []; } catch { return []; } }
 function saveBookings(a) {
@@ -56,7 +68,7 @@ function removeBooking(c) { saveBookings(loadBookings().filter(b => b.c !== c));
 
 function updateBadge() {
   const t = todayISO();
-  const n = loadBookings().filter(b => b.status === 'pending' && b.d >= t).length;
+  const n = loadBookings().filter(b => isNewReq(b) && b.d >= t).length;
   $('#badge').textContent = n ? String(n) : '';
 }
 
@@ -183,10 +195,11 @@ function refreshEditorUI() {
   const b = currentCode ? getBooking(currentCode) : null;
   $('#paste-card').classList.toggle('hidden', !!b);
   $('#edit-banner').classList.toggle('hidden', !b);
-  if (b) $('#edit-banner-text').innerHTML = `<b>${esc(b.c)}</b> · ${esc(b.n)} ${chip(b.status)}<div class="small muted" style="margin-top:4px">Qui puoi modificare tutto, poi salvare o confermare.</div>`;
+  if (b) $('#edit-banner-text').innerHTML = `<b>${esc(b.c)}</b> · ${esc(b.n)} ${chipFor(b)}<div class="small muted" style="margin-top:4px">Qui puoi modificare tutto, poi salvare o confermare.</div>`;
   form.c.readOnly = !!b;
   $('#confirm').textContent = b && b.status === 'confirmed' ? '✅ Aggiorna e reinvia la conferma' : '✅ Prenotazione completata – Conferma';
   $('#save').textContent = b ? '💾 Salva le modifiche' : '💾 Salva in agenda (senza confermare)';
+  $('#take-b').classList.toggle('hidden', !b || !isNewReq(b));
   $('#cancel-b').classList.toggle('hidden', !b || b.status === 'cancelled');
   $('#restore-b').classList.toggle('hidden', !b || b.status !== 'cancelled');
   $('#delete-b').classList.toggle('hidden', !b);
@@ -281,10 +294,10 @@ function afterParse() {
   const ex = code && getBooking(code);
   if (ex) { openBooking(code); toast('Era già in agenda: ' + ST[ex.status][0]); return; }
   if (v.c && v.d && v.n && v.t) {
-    const rec = upsertBooking({ ...recordFromForm('pending'), orig: { t: v.t.trim(), n: v.n.trim(), u: v.u.trim(), s: (v.s || '').trim() } });
+    const rec = upsertBooking({ ...recordFromForm('pending'), isNew: true, orig: { t: v.t.trim(), n: v.n.trim(), u: v.u.trim(), s: (v.s || '').trim() } });
     currentCode = rec.c;
     refreshEditorUI();
-    toast('Salvata in agenda: da confermare');
+    toast('Salvata in agenda: nuova richiesta');
   } else toast('Richiesta letta: completa i dati mancanti');
 }
 
@@ -313,18 +326,22 @@ function validOrWarn() {
 $('#save').addEventListener('click', () => {
   if (!validOrWarn()) return;
   const ex = getBooking(val().c.trim().toUpperCase());
-  const rec = upsertBooking(recordFromForm(ex ? ex.status : 'pending'));
+  const rec = upsertBooking(ex ? recordFromForm(ex.status) : { ...recordFromForm('pending'), isNew: true });
   currentCode = rec.c;
   refreshEditorUI();
-  toast(ex && ex.status === 'confirmed' ? 'Modifiche salvate (il cliente non è stato avvisato)' : 'Salvata in agenda');
+  toast(ex && ex.status === 'confirmed' ? 'Modifiche salvate (il cliente non è stato avvisato)' : ex ? 'Modifiche salvate' : 'Salvata in agenda: nuova richiesta');
+});
+$('#take-b').addEventListener('click', () => {
+  upsertBooking({ ...recordFromForm('pending'), isNew: false });
+  refreshEditorUI(); toast('Presa in carico: ora è da confermare');
 });
 $('#cancel-b').addEventListener('click', () => {
   if (!confirm('Segnare questa prenotazione come ANNULLATA?\n\nIl cliente non riceve nessun avviso automatico: scrivigli tu.')) return;
-  upsertBooking({ ...recordFromForm('cancelled') });
+  upsertBooking({ ...recordFromForm('cancelled'), isNew: false });
   refreshEditorUI(); toast('Prenotazione annullata');
 });
 $('#restore-b').addEventListener('click', () => {
-  upsertBooking({ ...recordFromForm('pending') });
+  upsertBooking({ ...recordFromForm('pending'), isNew: false });
   refreshEditorUI(); toast('Riattivata: da confermare');
 });
 $('#delete-b').addEventListener('click', () => {
@@ -378,7 +395,7 @@ async function createConfirmation() {
   lines.push('', 'You can view your confirmed booking and your tour pass in the app:', link,
     '', 'Travelling to other ports in Italy or the Mediterranean? Discover our network of trusted local drivers: www.tourisfied.com',
     '', 'Kind regards,', CONFIG.driverName, `${CONFIG.brand} Team`, `WhatsApp ${CONFIG.phoneDisplay}`);
-  const rec = upsertBooking({ ...recordFromForm('confirmed'), confirmedAt: Date.now(), link, msg: lines.join('\n') });
+  const rec = upsertBooking({ ...recordFromForm('confirmed'), isNew: false, confirmedAt: Date.now(), link, msg: lines.join('\n') });
   currentCode = rec.c;
   refreshEditorUI();
   showResult(rec);
@@ -415,15 +432,15 @@ function bookingRow(b) {
   return `<button type="button" class="brow ${past ? 'past' : ''} ${b.status === 'cancelled' ? 'cancelled' : ''}" data-open="${esc(b.c)}">
     <div class="bt"><b>${d.getDate()}</b><span>${d.toLocaleDateString('it-IT', { month: 'short' })}</span></div>
     <div class="binfo"><b>${esc(b.t)}</b>${esc(b.n)} · ${b.p ? esc(b.p) + ' pers.' : 'persone da verificare'}${b.h ? ' · ' + esc(b.h) : ''}<div class="small muted">${esc(b.c)}</div></div>
-    ${chip(b.status)}
+    ${chipFor(b)}
   </button>`;
 }
 
 function renderAgenda() {
   const all = loadBookings();
-  const cnt = s => all.filter(b => b.status === s).length;
-  const filters = [['all', 'Tutte', all.length], ['pending', 'Da confermare', cnt('pending')], ['confirmed', 'Confermate', cnt('confirmed')], ['cancelled', 'Annullate', cnt('cancelled')]];
-  const list = all.filter(b => ag.filter === 'all' || b.status === ag.filter).sort(byDate);
+  const filters = FILTERS.map(([k, l]) => [k, l, all.filter(b => matchFilter(b, k)).length]);
+  const list = all.filter(b => matchFilter(b, ag.filter)).sort(byDate);
+  refreshImportUndo();
   let body = '';
 
   if (ag.view === 'list') {
@@ -444,13 +461,13 @@ function renderAgenda() {
     for (let d = 1; d <= days; d++) {
       const ds = `${y}-${pad(m + 1)}-${pad(d)}`;
       const it = items(ds);
-      const dots = (it.some(b => b.status === 'pending') ? '<i class="dot p"></i>' : '') + (it.some(b => b.status === 'confirmed') ? '<i class="dot c"></i>' : '');
+      const dots = (it.some(isNewReq) ? '<i class="dot n"></i>' : '') + (it.some(b => b.status === 'pending' && !b.isNew) ? '<i class="dot p"></i>' : '') + (it.some(b => b.status === 'confirmed') ? '<i class="dot c"></i>' : '');
       cells += `<button type="button" data-day="${ds}" class="${ds === t ? 'today' : ''} ${ds === ag.sel ? 'sel' : ''}">${d}<span class="dots">${dots}</span></button>`;
     }
     const dayList = ag.sel ? list.filter(b => b.d === ag.sel) : [];
     body = `<div class="calnav"><button type="button" data-nav="-1">‹</button><b>${ag.month.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</b><button type="button" data-nav="1">›</button></div>
       <div class="cal">${cells}</div>
-      <div class="legend"><i class="dot p" style="display:inline-block"></i>da confermare <i class="dot c" style="display:inline-block"></i>confermata · <a href="#" data-nav="0" style="text-decoration:underline">oggi</a></div>
+      <div class="legend"><i class="dot n" style="display:inline-block"></i>nuova <i class="dot p" style="display:inline-block"></i>da confermare <i class="dot c" style="display:inline-block"></i>confermata · <a href="#" data-nav="0" style="text-decoration:underline">oggi</a></div>
       ${ag.sel ? `<div class="dayh">${fmtDayHead(ag.sel)}</div>${dayList.length ? dayList.map(bookingRow).join('') : '<p class="small muted">Nessuna prenotazione in questo giorno.</p>'}` : '<p class="small muted" style="margin-top:10px">Tocca un giorno per vedere le prenotazioni.</p>'}`;
   }
 
@@ -567,7 +584,7 @@ function guessTime(servizio, note) {
   return pick(note) || pick(servizio);
 }
 
-function importCsvRows(rows, existing) {
+function importCsvRows(rows, existing, batch) {
   const head = rows[0].map(headKey);
   const col = name => head.indexOf(name);
   const need = ['data', 'cliente'];
@@ -605,7 +622,7 @@ function importCsvRows(rows, existing) {
       c: code, k, o: '', t: servizio || (k === 'transfer' ? 'Transfer' : 'Tour'), d, h: guessTime(servizio, note), p: parseInt(get(r, 'pax')) || null,
       u: get(r, 'navepickup'), e: parseMoney(get(r, 'totale')), n, s: '', x: extra,
       phone: normPhone(get(r, 'telefono')), email: get(r, 'email'), status, cal: get(r, 'calendario'),
-      srcKey, imported: true, importedAt: Date.now(), createdAt: Date.now() + i,
+      srcKey, imported: true, importedAt: batch, importBatch: batch, isNew: false, createdAt: Date.now() + i,
     });
   });
   return out;
@@ -616,7 +633,8 @@ $('#imp-csv').addEventListener('change', async e => {
   if (!file) return;
   try {
     const rows = parseCSV(await file.text());
-    const res = rows.length > 1 ? importCsvRows(rows, loadBookings()) : null;
+    const batch = Date.now();
+    const res = rows.length > 1 ? importCsvRows(rows, loadBookings(), batch) : null;
     if (!res) { toast('Non riconosco il file: servono le colonne Data e Cliente'); e.target.value = ''; return; }
     const f = res.fresh, t = todayISO();
     const cnt = fn => f.filter(fn).length;
@@ -641,11 +659,36 @@ $('#imp-csv').addEventListener('change', async e => {
     if (!confirm(msg)) { e.target.value = ''; return; }
     const all = loadBookings().concat(f);
     saveBookings(all); updateBadge();
-    toast(`Importate ${f.length} prenotazioni`); renderAgenda();
+    toast(`Importate ${f.length} prenotazioni (si possono annullare da Strumenti)`); renderAgenda();
   } catch (err) {
     console.error(err); toast('Non riesco a leggere il file');
   }
   e.target.value = '';
+});
+
+
+// Undo of an import: removes the bookings of the latest import that were never edited
+function lastBatch() {
+  const batches = [...new Set(loadBookings().filter(b => b.importBatch).map(b => b.importBatch))];
+  return batches.length ? Math.max(...batches) : null;
+}
+function refreshImportUndo() {
+  const bt = lastBatch();
+  const btn = $('#imp-undo');
+  btn.classList.toggle('hidden', !bt);
+  if (bt) btn.textContent = `Annulla l’ultima importazione (${loadBookings().filter(b => b.importBatch === bt).length} prenotazioni)`;
+}
+$('#imp-undo').addEventListener('click', () => {
+  const bt = lastBatch();
+  if (!bt) return;
+  const mine = loadBookings().filter(b => b.importBatch === bt);
+  const edited = mine.filter(b => b.updatedAt || (b.status === 'confirmed' && b.link));       // touched since the import
+  const gone = new Set(mine.filter(b => !edited.includes(b)).map(b => b.c));
+  const removable = [...gone];
+  if (!confirm(`Annullare l’ultima importazione?\n\nVengono tolte ${removable.length} prenotazioni importate.${edited.length ? `\n${edited.length} che hai modificato o confermato restano in agenda.` : ''}`)) return;
+  saveBookings(loadBookings().filter(b => !gone.has(b.c)));
+  edited.forEach(b => upsertBooking({ c: b.c, importBatch: null }));
+  updateBadge(); toast(`Importazione annullata: tolte ${removable.length} prenotazioni`); renderAgenda();
 });
 
 function initAgenda() {

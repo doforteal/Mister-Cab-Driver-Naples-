@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=22" />
+  <link rel="stylesheet" href="styles.css?v=24" />
   <style>
     #view { padding-bottom: 40px; }
     .ok-box { background: #e3efe4; color: #2f5a35; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
@@ -53,7 +53,7 @@
     .cal button.sel { background: var(--navy); color: #fff; border-color: var(--navy); }
     .dots { display: flex; gap: 3px; height: 6px; }
     .dot { width: 6px; height: 6px; border-radius: 50%; }
-    .dot.p { background: var(--terra); } .dot.c { background: var(--sage); }
+    .dot.n { background: #2a6496; } .dot.p { background: var(--terra); } .dot.c { background: var(--sage); }
     .cal button.sel .dot.c { background: #9fd6a8; }
     .legend { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
     .legend .dot { display: inline-block; margin: 0 4px 0 8px; }
@@ -144,6 +144,7 @@
               <h2 class="sec">3. Quando hai finito tutto</h2>
               <button class="btn big" id="confirm" type="button">✅ Prenotazione completata – Conferma</button>
               <p class="note">Premilo solo dopo aver completato tutto fuori dall’app (pagamento, accordi col cliente). Poi invii al cliente il messaggio con il link di conferma.</p>
+              <button class="btn ghost hidden" id="take-b" type="button">➡️ Presa in carico: segna come “da confermare”</button>
               <button class="btn ghost" id="save" type="button">💾 Salva in agenda (senza confermare)</button>
               <div class="btns2" style="margin-top:10px">
                 <button class="btn ghost hidden" id="cancel-b" type="button">🚫 Annulla prenotazione</button>
@@ -177,6 +178,7 @@
                 <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
                 <p class="small muted">Hai già un foglio con le prenotazioni? Scaricalo come file <b>CSV</b> e caricalo qui: vedrai un riepilogo prima di importare. Le prenotazioni già presenti non vengono toccate.</p>
                 <label class="btn ghost">Importa da foglio (CSV)<input type="file" id="imp-csv" accept=".csv,text/csv,text/plain" hidden /></label>
+                <button class="btn ghost hidden" id="imp-undo" type="button">Annulla l’ultima importazione</button>
               </div>
             </details>
           </section>
@@ -190,10 +192,10 @@
   </div>
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="config.js?v=22"></script>
-  <script src="data.js?v=22"></script>
-  <script src="confirm.js?v=22"></script>
-  <script src="admin-vault.js?v=22"></script>
-  <script src="admin.js?v=22"></script>
+  <script src="config.js?v=24"></script>
+  <script src="data.js?v=24"></script>
+  <script src="confirm.js?v=24"></script>
+  <script src="admin-vault.js?v=24"></script>
+  <script src="admin.js?v=24"></script>
 </body>
 </html>
