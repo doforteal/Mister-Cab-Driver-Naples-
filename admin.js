@@ -472,6 +472,7 @@ function renderAgenda() {
   }
 
   $('#agenda-body').innerHTML = `
+    <p class="small muted" style="margin:0 0 10px">Agenda salvata in questo browser (${esc(location.host)}): <b>${all.length}</b> prenotazioni.</p>
     <div class="atabs"><button type="button" data-av="list" class="${ag.view === 'list' ? 'on' : ''}">☰ Lista</button><button type="button" data-av="cal" class="${ag.view === 'cal' ? 'on' : ''}">🗓 Calendario</button></div>
     <div class="chips">${filters.map(([k, l, n]) => `<button type="button" class="chipbtn ${ag.filter === k ? 'on' : ''}" data-f="${k}">${l} (${n})</button>`).join('')}</div>
     ${body}`;
@@ -738,9 +739,29 @@ function openPanel() {
   $('#panel').classList.remove('hidden');
   // Safety check: the app must know the public half of this key
   const same = SIGN_KEY && CONFIG.confirmPublicKey && SIGN_KEY.x === CONFIG.confirmPublicKey.x && SIGN_KEY.y === CONFIG.confirmPublicKey.y;
-  $('#key-section').innerHTML = same ? '' : '<div class="warn-box">Attenzione: le conferme create qui non verrebbero riconosciute dall\'app. Avvisa chi gestisce l\'app.</div>';
+  const warns = storageWarnings();
+  if (!same) warns.unshift('Attenzione: le conferme create qui non verrebbero riconosciute dall\'app. Avvisa chi gestisce l\'app.');
+  $('#key-section').innerHTML = warns.map(w => `<div class="warn-box">${w}</div>`).join('');
   $('#form-section').classList.remove('hidden');
   initAgenda();
+  // Ask the browser not to clear the agenda when it frees space
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch { /* ignore */ }
+}
+
+// The agenda lives in this browser only: say so when the browser will not keep it
+function storageWarnings() {
+  const w = [];
+  try {
+    localStorage.setItem('mcc_probe', '1');
+    if (localStorage.getItem('mcc_probe') !== '1') throw new Error('no storage');
+    localStorage.setItem('mcc_probe', '');
+  } catch {
+    w.push('Questo browser non conserva i dati del sito (navigazione privata o dati bloccati): <b>l\'agenda non verrà salvata</b>. Apri il pannello in una scheda normale di Chrome.');
+  }
+  if (/; wv\)|FBAN|FBAV|Instagram|Line\//.test(navigator.userAgent)) {
+    w.push('Stai usando il browser interno di un\'altra app (WhatsApp, Gmail, Messenger…): <b>i dati possono andare persi</b>. Apri il pannello in Chrome e salvalo nella schermata Home.');
+  }
+  return w;
 }
 
 let fails = 0, lockedUntil = 0;
