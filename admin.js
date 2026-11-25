@@ -540,7 +540,8 @@ function parseCSV(text) {
 const headKey = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 
 function parseDateAny(s) {
-  s = String(s || '').trim();
+  s = String(s || '').trim().replace(/^[A-Za-z\u00C0-\u00FF.]+,?\s+/, '');     // drops a weekday such as "gio "
+
   let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/.exec(s);          // day first, as in Italy
@@ -559,29 +560,38 @@ function parseMoney(s) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 function normPhone(s) {
-  const raw = String(s || '').trim();
+  const raw = String(s || '').trim().replace(/^'+/, '');
   if (!raw) return '';
   const d = raw.replace(/[^\d+]/g, '');
   if (d.startsWith('+')) return d;
   if (d.startsWith('00')) return '+' + d.slice(2);
-  if (/^3\d{9}$/.test(d)) return '+39' + d;                // Italian mobile without prefix
-  if (/^1\d{10}$/.test(d)) return '+' + d;                 // North America
-  return raw;                                              // unclear: leave as written
+  if (/^1\d{10}$/.test(d)) return '+' + d;                                   // 1-507-271-6802
+  if (/^\(?\d{3}\)?[-.]\d{3}[-.]\d{4}$/.test(raw) && /^[2-9]\d{9}$/.test(d)) return '+1' + d;   // 646-594-7873
+  if (/^3\d{9}$/.test(d) && !/[-.]/.test(raw)) return '+39' + d;              // 392 248 8238 (Italian mobile)
+  if (/^07\d{9}$/.test(d)) return '+44' + d.slice(1);                         // 07488 276628 (UK mobile)
+  return raw;                                                                 // unclear: left as written
 }
-// First meeting time found in the notes or the service text (not arrivals, returns, trains or flights)
-function guessTime(servizio, note) {
-  const pick = text => {
-    text = String(text || '');
-    let m = /(?:partenza|pick-?up|ritiro)\D{0,3}([01]?\d|2[0-3])[:.]([0-5]\d)/i.exec(text);
-    if (m) return `${pad(+m[1])}:${m[2]}`;
+// Start time, only from clear cues: "ritrovo / incontro / pick-up / ritiro HH:MM", a time at the end of the
+// pick-up column ("Hotel X, Sorrento - 8:00") and, for transfers, "Partenza HH:MM" or the first time in the text.
+// Docking, arrival, train and flight times are never taken for the start time.
+function guessTime(servizio, note, pickup, transferish) {
+  const T = '([01]?\\d|2[0-3])[:.]([0-5]\\d)';
+  const fmt = m => `${pad(+m[1])}:${m[2]}`;
+  const labeled = new RegExp('(?:ritrovo|incontro|appuntamento|pick-?up|ritiro)\\D{0,10}' + T, 'i');
+  for (const text of [note, servizio, pickup]) { const m = labeled.exec(String(text || '')); if (m) return fmt(m); }
+  if (transferish) { const m = new RegExp('partenza\\D{0,3}' + T, 'i').exec(String(note || '')); if (m) return fmt(m); }
+  const end = new RegExp('(?<!\\d)\\s[\\u2013\\u2014-]\\s*(?:ore\\s*)?' + T + '\\s*$', 'i').exec(String(pickup || '').trim());
+  if (end) return fmt(end);
+  if (transferish) {
+    const text = String(servizio || '');
     const re = /(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?!\d)/g;
+    let m;
     while ((m = re.exec(text))) {
       const before = text.slice(Math.max(0, m.index - 10), m.index).toLowerCase();
-      if (!/arriv|ritorn|treno|volo/.test(before)) return `${pad(+m[1])}:${m[2]}`;
+      if (!/arriv|ritorn|treno|volo|delle/.test(before)) return fmt(m);
     }
-    return '';
-  };
-  return pick(note) || pick(servizio);
+  }
+  return '';
 }
 
 function importCsvRows(rows, existing, batch) {
@@ -616,10 +626,10 @@ function importCsvRows(rows, existing, batch) {
       code = numToCode(h % 28629151); salt++;
     } while (taken.has(code));
     taken.add(code);
-    const note = get(r, 'note'), adv = parseMoney(get(r, 'anticipo')), link = get(r, 'linksumup');
-    const extra = [note, adv ? `Anticipo: ${adv} EUR` : '', link ? `Link SumUp: ${link}` : '', status === 'pending' && /verific/.test(st) ? 'Stato nel foglio: da verificare' : '', k === 'private' && tipo.includes('transfer') ? 'Tipo nel foglio: transfer + tour' : ''].filter(Boolean).join('\n');
+    const note = get(r, 'note'), adv = parseMoney(get(r, 'anticipo')), link = get(r, 'linksumup'), tel = get(r, 'telefono');
+    const extra = [note, adv ? `Anticipo: ${adv} EUR` : '', link ? `Link SumUp: ${link}` : '', status === 'pending' && /verific/.test(st) ? 'Stato nel foglio: da verificare' : '', k === 'private' && tipo.includes('transfer') ? 'Tipo nel foglio: transfer + tour' : '', /[A-Za-z]/.test(tel) ? `Telefono nel foglio: ${tel.replace(/^'+/, '')}` : ''].filter(Boolean).join('\n');
     out.fresh.push({
-      c: code, k, o: '', t: servizio || (k === 'transfer' ? 'Transfer' : 'Tour'), d, h: guessTime(servizio, note), p: parseInt(get(r, 'pax')) || null,
+      c: code, k, o: '', t: servizio || (k === 'transfer' ? 'Transfer' : 'Tour'), d, h: guessTime(servizio, note, get(r, 'navepickup'), tipo.includes('transfer')), p: parseInt(get(r, 'pax')) || null,
       u: get(r, 'navepickup'), e: parseMoney(get(r, 'totale')), n, s: '', x: extra,
       phone: normPhone(get(r, 'telefono')), email: get(r, 'email'), status, cal: get(r, 'calendario'),
       srcKey, imported: true, importedAt: batch, importBatch: batch, isNew: false, createdAt: Date.now() + i,
