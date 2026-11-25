@@ -26,6 +26,7 @@ const CONFIG = {
   // Create it once in admin.html ("Crea la chiave") and paste it here.
   // Until it is set, bookings stay "Pending" and links cannot be opened.
   confirmPublicKey: {"kty": "EC", "crv": "P-256", "x": "GoN5vh8PQj6Y0s4ZAAxqcfUILkhlkdjd9S5wGhNG8R0", "y": "44GAJrRAynzZtswDe_m48W8igJ8llFmNzYe23JrynwU"},
+  shortLinks: true,                    // short confirmation links (/c/xxxx); needs the KV storage, otherwise the normal link is used
   appUrl: '',                          // optional: full URL of index.html used in links (default: same site)
 
   // Live shared tours (same Supabase as taximrcabpooling.com, read-only)

@@ -121,6 +121,7 @@ const routes = {
   trip: renderTrip,
   confirm: renderConfirm,
   c: renderConfirmCompact,
+  k: renderShortConfirm,
   account: renderAccount,
 };
 
@@ -128,7 +129,7 @@ function router() {
   closeSheet();
   if (!S.profile) {
     // Keep a confirmation link opened before sign-up, and apply it right after
-    const m = location.hash.match(/^#\/((?:confirm|c)\/.+)$/);
+    const m = location.hash.match(/^#\/((?:confirm|c|k)\/.+)$/);
     if (m) { try { sessionStorage.setItem(PENDING_CONFIRM_KEY, m[1]); } catch { /* ignore */ } }
     renderWelcome();
     return;
@@ -136,7 +137,7 @@ function router() {
   document.body.classList.remove('onboarding');
   const [name = 'home', arg] = location.hash.replace(/^#\/?/, '').split('/');
   const fn = routes[name] || renderHome;
-  const tab = { tour: 'explore', book: 'explore', transfer: 'explore', trip: 'trips' }[name] || name;
+  const tab = { k: 'trips', c: 'trips', confirm: 'trips', tour: 'explore', book: 'explore', transfer: 'explore', trip: 'trips' }[name] || name;
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   fn(arg);
   window.scrollTo(0, 0);
@@ -609,17 +610,40 @@ async function renderConfirmCompact(token) { return handleConfirm(token, verifyC
 async function handleConfirm(token, verify) {
   view.innerHTML = `<div class="card empty" style="margin-top:40px"><div class="big">🔐</div><p class="muted">Checking your confirmation…</p></div>`;
   const res = await verify(token, CONFIG.confirmPublicKey);
-  if (!res.ok) {
-    view.innerHTML = `
+  if (!res.ok) { showConfirmError(res.reason); return; }
+  applyConfirmation(res.data, token);
+}
+
+// Short links (/c/<id>): the booking is read from the server, which only accepts bookings signed by Ciro
+async function renderShortConfirm(id) {
+  view.innerHTML = `<div class="card empty" style="margin-top:40px"><div class="big">🔐</div><p class="muted">Checking your confirmation…</p></div>`;
+  try {
+    const res = await fetch('/api/links/' + encodeURIComponent(id), { cache: 'no-store' });
+    if (res.status === 404) { showConfirmError('invalid'); return; }
+    const type = res.headers.get('content-type') || '';
+    if (!res.ok || !type.includes('json')) { showConfirmError('offline'); return; }
+    const j = await res.json();
+    if (!j || !j.data) { showConfirmError('invalid'); return; }
+    applyConfirmation(j.data, 'k:' + id);
+  } catch {
+    showConfirmError('offline');
+  }
+}
+
+function showConfirmError(reason) {
+  const msg = reason === 'not-setup' ? 'Confirmations are not active yet.'
+    : reason === 'offline' ? 'We could not load your confirmation. Please check your connection and try again.'
+    : 'This confirmation link is not valid.';
+  view.innerHTML = `
     <header class="top"><div><h1>Confirmation</h1></div></header>
     <div class="card empty"><div class="big">⚠️</div>
-      <p><b>${res.reason === 'not-setup' ? 'Confirmations are not active yet.' : 'This confirmation link is not valid.'}</b></p>
+      <p><b>${msg}</b></p>
       <p class="small muted" style="margin-top:6px">Please check that you opened the whole link, or ask ${esc(CONFIG.driverName)} to send it again.</p>
       <a class="btn wa" style="margin-top:14px" target="_blank" rel="noopener" href="${chatLink('my confirmation link does not open.')}">Write to ${esc(CONFIG.driverName)}</a>
       <a class="btn ghost" href="#/trips">My Trips</a></div>`;
-    return;
-  }
-  const d = res.data;
+}
+
+function applyConfirmation(d, token) {
   let t = S.trips.find(x => x.code === d.c);
   if (!t) {
     t = { id: uid('T'), code: d.c, createdAt: Date.now() };

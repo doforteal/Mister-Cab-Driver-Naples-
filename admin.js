@@ -373,10 +373,16 @@ async function createConfirmation() {
     const same = k === 't' && defTitle ? cur.t === defTitle : !!orig && (orig[k] || '') === cur[k];
     if (!same) mask |= bit;
   });
-  let token = await signCompact(SIGN_KEY, data, mask), path = 'c';
-  if (!token) { token = await signConfirmation(SIGN_KEY, data); path = 'confirm'; }       // unusual code or value: long format
   const base = CONFIG.appUrl || new URL('./', location.href).href.split('#')[0];
-  const link = `${base}#/${path}/${token}`;
+  // 1) short link (needs the online storage); 2) otherwise the compact link; 3) the long one for unusual values
+  const shortId = await makeShortLink(data);
+  let link, linkKind;
+  if (shortId) { link = `${base}c/${shortId}`; linkKind = 'short'; }
+  else {
+    let token = await signCompact(SIGN_KEY, data, mask), path = 'c';
+    if (!token) { token = await signConfirmation(SIGN_KEY, data); path = 'confirm'; }
+    link = `${base}#/${path}/${token}`; linkKind = 'normal';
+  }
   const balance = data.k === 'private' && data.e ? data.e - CONFIG.depositAmount : null;
   const first = data.n.split(/\s+/)[0];
   const lines = [
@@ -395,15 +401,30 @@ async function createConfirmation() {
   lines.push('', 'You can view your confirmed booking and your tour pass in the app:', link,
     '', 'Travelling to other ports in Italy or the Mediterranean? Discover our network of trusted local drivers: www.tourisfied.com',
     '', 'Kind regards,', CONFIG.driverName, `${CONFIG.brand} Team`, `WhatsApp ${CONFIG.phoneDisplay}`);
-  const rec = upsertBooking({ ...recordFromForm('confirmed'), isNew: false, confirmedAt: Date.now(), link, msg: lines.join('\n') });
+  const rec = upsertBooking({ ...recordFromForm('confirmed'), isNew: false, confirmedAt: Date.now(), link, linkKind, msg: lines.join('\n') });
   currentCode = rec.c;
   refreshEditorUI();
   showResult(rec);
 }
 $('#confirm').addEventListener('click', createConfirmation);
 
+// Creates the short link on the server (only Ciro's signature is accepted). Returns the id, or null if it is not available.
+async function makeShortLink(data) {
+  if (CONFIG.shortLinks === false) return null;
+  try {
+    const payload = JSON.stringify({ v: 2, ts: Date.now(), data });
+    const key = await crypto.subtle.importKey('jwk', SIGN_KEY, ECDSA_KEY, false, ['sign']);
+    const sig = B64U.enc(await crypto.subtle.sign(ECDSA_SIG, key, utf8(payload)));
+    const res = await fetch('/api/links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload, sig }) });
+    if (!res.ok || !(res.headers.get('content-type') || '').includes('json')) return null;
+    const j = await res.json();
+    return j && /^[a-z0-9]{6,16}$/.test(j.id || '') ? j.id : null;
+  } catch { return null; }
+}
+
 function showResult(b) {
   $('#msg').value = b.msg;
+  $('#link-note').textContent = b.linkKind === 'short' ? 'Link breve attivo.' : 'Link normale (il link breve non è ancora attivo: vedi la guida).';
   const wire = () => {
     const text = encodeURIComponent($('#msg').value);
     const d = digitsOf(b.phone);
