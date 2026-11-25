@@ -414,7 +414,7 @@ function bookingRow(b) {
   const past = b.d < todayISO();
   return `<button type="button" class="brow ${past ? 'past' : ''} ${b.status === 'cancelled' ? 'cancelled' : ''}" data-open="${esc(b.c)}">
     <div class="bt"><b>${d.getDate()}</b><span>${d.toLocaleDateString('it-IT', { month: 'short' })}</span></div>
-    <div class="binfo"><b>${esc(b.t)}</b>${esc(b.n)} · ${esc(b.p)} pers.${b.h ? ' · ' + esc(b.h) : ''}<div class="small muted">${esc(b.c)}</div></div>
+    <div class="binfo"><b>${esc(b.t)}</b>${esc(b.n)} · ${b.p ? esc(b.p) + ' pers.' : 'persone da verificare'}${b.h ? ' · ' + esc(b.h) : ''}<div class="small muted">${esc(b.c)}</div></div>
     ${chip(b.status)}
   </button>`;
 }
@@ -495,6 +495,156 @@ $('#imp').addEventListener('change', async e => {
     arr.forEach(b => { if (b && b.c && b.d) upsertBooking(b); });
     toast('Agenda caricata'); renderAgenda();
   } catch { toast('File non valido'); }
+  e.target.value = '';
+});
+
+// ── import from the spreadsheet (CSV) ─────────────────────────
+// Columns of Ciro's sheet: Data, Cliente, Pax, Servizio, Tipo, Stato, Totale, Anticipo,
+// Nave / Pick-up, Telefono, Email, Link SumUp, Calendario, Note
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0] || '';
+  const count = ch => first.split(ch).length - 1;
+  const delim = [[';', count(';')], ['\t', count('\t')], [',', count(',')]].sort((x, y) => y[1] - x[1])[0][0];
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ''));
+}
+const headKey = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+
+function parseDateAny(s) {
+  s = String(s || '').trim();
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/.exec(s);          // day first, as in Italy
+  if (!m) return '';
+  const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+  const dt = new Date(Date.UTC(y, +m[2] - 1, +m[1]));
+  return dt.getUTCMonth() === +m[2] - 1 && dt.getUTCDate() === +m[1] ? `${y}-${pad(+m[2])}-${pad(+m[1])}` : '';
+}
+function parseMoney(s) {
+  let t = String(s || '').replace(/[^\d.,-]/g, '');
+  if (!t) return null;
+  if (t.includes('.') && t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (t.includes(',')) t = t.replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = parseFloat(t);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function normPhone(s) {
+  const raw = String(s || '').trim();
+  if (!raw) return '';
+  const d = raw.replace(/[^\d+]/g, '');
+  if (d.startsWith('+')) return d;
+  if (d.startsWith('00')) return '+' + d.slice(2);
+  if (/^3\d{9}$/.test(d)) return '+39' + d;                // Italian mobile without prefix
+  if (/^1\d{10}$/.test(d)) return '+' + d;                 // North America
+  return raw;                                              // unclear: leave as written
+}
+// First meeting time found in the notes or the service text (not arrivals, returns, trains or flights)
+function guessTime(servizio, note) {
+  const pick = text => {
+    text = String(text || '');
+    let m = /(?:partenza|pick-?up|ritiro)\D{0,3}([01]?\d|2[0-3])[:.]([0-5]\d)/i.exec(text);
+    if (m) return `${pad(+m[1])}:${m[2]}`;
+    const re = /(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?!\d)/g;
+    while ((m = re.exec(text))) {
+      const before = text.slice(Math.max(0, m.index - 10), m.index).toLowerCase();
+      if (!/arriv|ritorn|treno|volo/.test(before)) return `${pad(+m[1])}:${m[2]}`;
+    }
+    return '';
+  };
+  return pick(note) || pick(servizio);
+}
+
+function importCsvRows(rows, existing) {
+  const head = rows[0].map(headKey);
+  const col = name => head.indexOf(name);
+  const need = ['data', 'cliente'];
+  if (need.some(n => col(n) < 0)) return null;
+  const C = Object.fromEntries(['data', 'cliente', 'pax', 'servizio', 'tipo', 'stato', 'totale', 'anticipo', 'navepickup', 'telefono', 'email', 'linksumup', 'calendario', 'note'].map(k => [k, col(k)]));
+  const get = (r, k) => (C[k] >= 0 ? String(r[C[k]] ?? '').trim() : '');
+  const bySrc = new Map(existing.filter(b => b.srcKey).map(b => [b.srcKey, b]));
+  const taken = new Set(existing.map(b => b.c));
+  const seen = new Map();
+  const out = { fresh: [], present: 0, noDate: 0, rows: rows.length - 1 };
+  rows.slice(1).forEach((r, i) => {
+    const d = parseDateAny(get(r, 'data'));
+    const n = get(r, 'cliente');
+    if (!d || !n) { out.noDate++; return; }
+    const servizio = get(r, 'servizio');
+    const tipo = headKey(get(r, 'tipo'));
+    const k = tipo.includes('transfer') && !tipo.includes('tour') ? 'transfer' : 'private';
+    const st = headKey(get(r, 'stato'));
+    const status = st.startsWith('confermat') ? 'confirmed' : (st.startsWith('cancell') || st.startsWith('annull')) ? 'cancelled' : 'pending';
+    // Same row, same code: importing twice never duplicates
+    const base = [d, n, servizio, k].join('|').toLowerCase();
+    const occ = (seen.get(base) || 0) + 1; seen.set(base, occ);
+    const srcKey = base + '|' + occ;
+    if (bySrc.has(srcKey)) { out.present++; return; }
+    let salt = 0, code;
+    do {
+      let h = 2166136261; const s = srcKey + '#' + salt;
+      for (let j = 0; j < s.length; j++) { h ^= s.charCodeAt(j); h = Math.imul(h, 16777619) >>> 0; }
+      code = numToCode(h % 28629151); salt++;
+    } while (taken.has(code));
+    taken.add(code);
+    const note = get(r, 'note'), adv = parseMoney(get(r, 'anticipo')), link = get(r, 'linksumup');
+    const extra = [note, adv ? `Anticipo: ${adv} EUR` : '', link ? `Link SumUp: ${link}` : '', status === 'pending' && /verific/.test(st) ? 'Stato nel foglio: da verificare' : '', k === 'private' && tipo.includes('transfer') ? 'Tipo nel foglio: transfer + tour' : ''].filter(Boolean).join('\n');
+    out.fresh.push({
+      c: code, k, o: '', t: servizio || (k === 'transfer' ? 'Transfer' : 'Tour'), d, h: guessTime(servizio, note), p: parseInt(get(r, 'pax')) || null,
+      u: get(r, 'navepickup'), e: parseMoney(get(r, 'totale')), n, s: '', x: extra,
+      phone: normPhone(get(r, 'telefono')), email: get(r, 'email'), status, cal: get(r, 'calendario'),
+      srcKey, imported: true, importedAt: Date.now(), createdAt: Date.now() + i,
+    });
+  });
+  return out;
+}
+
+$('#imp-csv').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const rows = parseCSV(await file.text());
+    const res = rows.length > 1 ? importCsvRows(rows, loadBookings()) : null;
+    if (!res) { toast('Non riconosco il file: servono le colonne Data e Cliente'); e.target.value = ''; return; }
+    const f = res.fresh, t = todayISO();
+    const cnt = fn => f.filter(fn).length;
+    const dates = f.map(b => b.d).sort();
+    const msg = [
+      `Righe lette: ${res.rows}`,
+      `Da importare: ${f.length} (${cnt(b => b.d >= t)} con data futura)`,
+      `Già presenti, non toccate: ${res.present}`,
+      res.noDate ? `Saltate (senza data o cliente): ${res.noDate}` : '',
+      '',
+      `Confermate: ${cnt(b => b.status === 'confirmed')} · Da confermare: ${cnt(b => b.status === 'pending')} · Annullate: ${cnt(b => b.status === 'cancelled')}`,
+      dates.length ? `Date: dal ${fmtShort(dates[0])} al ${fmtShort(dates[dates.length - 1])}` : '',
+      '',
+      'Da completare dopo l’importazione:',
+      `- senza numero di persone: ${cnt(b => !b.p)}`,
+      `- senza punto di ritiro: ${cnt(b => !b.u)}`,
+      `- senza orario riconosciuto: ${cnt(b => !b.h)}`,
+      `- senza telefono né email: ${cnt(b => !b.phone && !b.email)}`,
+      '', f.length ? 'Importare?' : 'Non c’è nulla di nuovo da importare.',
+    ].filter((x, i, arr) => x !== '' || arr[i - 1] !== '').join('\n');
+    if (!f.length) { alert(msg); e.target.value = ''; return; }
+    if (!confirm(msg)) { e.target.value = ''; return; }
+    const all = loadBookings().concat(f);
+    saveBookings(all); updateBadge();
+    toast(`Importate ${f.length} prenotazioni`); renderAgenda();
+  } catch (err) {
+    console.error(err); toast('Non riesco a leggere il file');
+  }
   e.target.value = '';
 });
 
